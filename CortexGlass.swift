@@ -7,7 +7,7 @@ import AVFoundation
 import CoreMedia
 
 // 1. Single-Instance Process Lock
-let lockPath = "/tmp/com.swikar.collaboverlay.lock"
+let lockPath = "/tmp/com.swikar.cortexglass.lock"
 let lock = open(lockPath, O_CREAT | O_WRONLY, 0o600)
 if lock == -1 || flock(lock, LOCK_EX | LOCK_NB) != 0 { exit(0) }
 
