@@ -1,4 +1,5 @@
 import Cocoa
+import WebKit
 import Carbon
 import Vision
 import ScreenCaptureKit
@@ -16,22 +17,24 @@ if lock == -1 || flock(lock, LOCK_EX | LOCK_NB) != 0 { exit(0) }
 // 2. State Machine Definition
 // ============================================================================
 enum PillState {
-    case idle, analyzing, preparing, typing, done, error(String)
+    case idle, analyzing, preparing, typing, done, evaluating, diagnosticReady, error(String)
 
     var meta: (badge: String, sub: String, icon: String, color: NSColor) {
         switch self {
-        case .idle:           return ("READY", "[Opt+S to Solve]", "●", NSColor(white: 0.45, alpha: 0.85))
-        case .analyzing:      return ("ANALYZING", "[Vision OCR + LLM]", "⚡", NSColor(red: 0.98, green: 0.65, blue: 0.12, alpha: 0.95))
-        case .preparing:      return ("PREPARING...", "[Deliberating 4s...]", "🤔", NSColor(red: 0.98, green: 0.65, blue: 0.12, alpha: 0.95))
-        case .typing:         return ("TYPING...", "[DO NOT TOUCH KB/MOUSE]", "⌨️", NSColor(red: 0.15, green: 0.78, blue: 0.98, alpha: 0.95))
-        case .done:           return ("DONE - RUN TESTS", "[Click Run & Submit manually]", "🚀", NSColor(red: 0.05, green: 0.92, blue: 0.45, alpha: 1.0))
-        case .error(let msg): return (msg.isEmpty ? "ERROR" : msg, "[Opt+R to Reset]", "❌", NSColor(red: 0.95, green: 0.15, blue: 0.15, alpha: 1.0))
+        case .idle:            return ("READY", "[Opt+S to Solve]", "●", NSColor(white: 0.45, alpha: 0.85))
+        case .analyzing:       return ("ANALYZING", "[Vision OCR + LLM]", "⚡", NSColor(red: 0.98, green: 0.65, blue: 0.12, alpha: 0.95))
+        case .preparing:       return ("PREPARING...", "[Deliberating 4s...]", "🤔", NSColor(red: 0.98, green: 0.65, blue: 0.12, alpha: 0.95))
+        case .typing:          return ("TYPING...", "[DO NOT TOUCH KB/MOUSE]", "⌨️", NSColor(red: 0.15, green: 0.78, blue: 0.98, alpha: 0.95))
+        case .done:            return ("DONE - RUN TESTS", "[Click Run & Submit manually]", "🚀", NSColor(red: 0.05, green: 0.92, blue: 0.45, alpha: 1.0))
+        case .evaluating:      return ("DIAGNOSING", "[Analyzing Test Output...]", "⚠️", NSColor(red: 0.98, green: 0.65, blue: 0.12, alpha: 0.95))
+        case .diagnosticReady: return ("FIX READY", "[Opt+Z to Hide]", "👉", NSColor(red: 0.15, green: 0.85, blue: 0.95, alpha: 1.0))
+        case .error(let msg):  return (msg.isEmpty ? "ERROR" : msg, "[Opt+R to Reset]", "❌", NSColor(red: 0.95, green: 0.15, blue: 0.15, alpha: 1.0))
         }
     }
 }
 
 // ============================================================================
-// 3. Undetectable Hardware-Level Micro-HUD Pill View & Panel
+// 3. Undetectable Micro-HUD Pill View & Panel
 // ============================================================================
 class PillContentView: NSView {
     private let iconLabel = NSTextField(labelWithString: "●")
@@ -75,7 +78,40 @@ class PillPanel: NSPanel {
 }
 
 // ============================================================================
-// 4. Biometric Typer (Authentic Human Cognitive Simulation & Pure Arrow Navigation)
+// 4. Undetectable Hardware-Level Spatial Panel (Diagnostics Window)
+// ============================================================================
+class SpatialPanel: NSPanel {
+    var isInteractive = false
+
+    init(rect: NSRect) {
+        super.init(
+            contentRect: rect,
+            styleMask: [.nonactivatingPanel, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        sharingType = .none // Completely stripped from screen capture and WebRTC
+        level = .floating
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        isOpaque = false
+        backgroundColor = .clear
+        ignoresMouseEvents = true // Pass-through clicks by default
+        isMovableByWindowBackground = true
+
+        contentView?.wantsLayer = true
+        contentView?.layer?.cornerRadius = 14
+        contentView?.layer?.masksToBounds = true
+        contentView?.layer?.borderWidth = 2.0
+        contentView?.layer?.borderColor = NSColor(red: 0.15, green: 0.85, blue: 0.95, alpha: 0.85).cgColor
+        contentView?.layer?.backgroundColor = NSColor(red: 0.07, green: 0.09, blue: 0.13, alpha: 0.95).cgColor
+    }
+
+    override var canBecomeKey: Bool { isInteractive }
+    override var canBecomeMain: Bool { isInteractive }
+}
+
+// ============================================================================
+// 5. Biometric Typer (Authentic Human Cognitive Simulation & Pure Arrow Navigation)
 // ============================================================================
 struct IntentionalMistake {
     let flawedLine: String
@@ -464,7 +500,7 @@ class BiometricTyper {
 }
 
 // ============================================================================
-// 5. Spatial Split-Pane OCR & Sliding Overlap Deduplicator
+// 6. Spatial Split-Pane OCR & Sliding Overlap Deduplicator
 // ============================================================================
 class SpatialOCRManager {
     static let shared = SpatialOCRManager()
@@ -529,7 +565,7 @@ class SpatialOCRManager {
 }
 
 // ============================================================================
-// 6. Direct REST Intelligence Engine (Multi-Model Failover Cascade)
+// 7. Direct REST Intelligence Engine (Multi-Model Failover Cascade)
 // ============================================================================
 class GeminiRESTClient {
     static let shared = GeminiRESTClient()
@@ -565,7 +601,148 @@ class GeminiRESTClient {
         return try await executeGeminiRequest(prompt: prompt, apiKey: apiKey)
     }
 
-    private func executeGeminiRequest(prompt: String, apiKey: String) async throws -> String {
+    func requestDiagnosticAssistance(problem: String, currentCode: String, testConsoleOutput: String) async throws -> String {
+        guard let apiKey = resolveAPIKey() else {
+            throw NSError(domain: "SpatialVision", code: 401, userInfo: [NSLocalizedDescriptionKey: "GEMINI_API_KEY missing"])
+        }
+        let prompt = """
+        You are an expert competitive programming debugger.
+        Analyze the problem, the candidate's current code, and the test failure console output.
+        PROBLEM:
+        \(problem)
+
+        CURRENT CANDIDATE CODE:
+        \(currentCode)
+
+        TEST FAILURE / CONSOLE OUTPUT:
+        \(testConsoleOutput)
+
+        TASK:
+        Provide:
+        1. BUG DIAGNOSIS: 1-2 concise bullet points identifying the exact flaw (off-by-one, type mismatch, edge case).
+        2. COMPLETE CORRECTED CODE: Pure production code snippet ready to be applied.
+        3. EXPLANATION: 1 sentence on why this fix resolves the failed test case.
+        4. EDGE CASES: 1-2 key edge cases to watch out for.
+
+        OUTPUT FORMAT:
+        Format cleanly with HTML/CSS dark mode styling for direct rendering in WKWebView.
+        Use modern dark theme styling (background: #0d1117, cards: #161b22, border: #30363d, text: #e6edf3, accent: #38bdf8, code: #a5d6ff).
+        Do NOT wrap the output in outer markdown backticks (```html ... ```). Return ONLY the HTML content.
+        """
+        return try await executeGeminiRequest(prompt: prompt, apiKey: apiKey, isRawHTML: true)
+    }
+
+    func formatDiagnosticHTML(_ raw: String) -> String {
+        var body = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if body.hasPrefix("```html") { body = String(body.dropFirst(7)) }
+        else if body.hasPrefix("```") { body = String(body.dropFirst(3)) }
+        if body.hasSuffix("```") { body = String(body.dropLast(3)) }
+        body = body.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if body.lowercased().contains("<html") && body.lowercased().contains("</html>") {
+            return body
+        }
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <style>
+            :root {
+                --bg: #0d1117;
+                --card: #161b22;
+                --border: #30363d;
+                --text: #e6edf3;
+                --text-muted: #8b949e;
+                --accent: #38bdf8;
+                --success: #34d399;
+                --danger: #f87171;
+                --code-bg: #1c2128;
+            }
+            body {
+                background-color: var(--bg);
+                color: var(--text);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+                font-size: 13px;
+                line-height: 1.55;
+                margin: 0;
+                padding: 16px;
+                user-select: text;
+                -webkit-user-select: text;
+            }
+            h1, h2, h3, h4 {
+                color: var(--accent);
+                margin-top: 14px;
+                margin-bottom: 8px;
+                font-weight: 600;
+                font-size: 14px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .header-badge {
+                display: inline-block;
+                background: rgba(56, 189, 248, 0.15);
+                color: var(--accent);
+                border: 1px solid rgba(56, 189, 248, 0.4);
+                padding: 3px 8px;
+                border-radius: 6px;
+                font-size: 11px;
+                font-weight: 700;
+                margin-bottom: 12px;
+            }
+            .card {
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 12px 14px;
+                margin-bottom: 14px;
+            }
+            ul, ol {
+                margin: 0;
+                padding-left: 20px;
+            }
+            li {
+                margin-bottom: 6px;
+            }
+            pre {
+                background: var(--code-bg);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 12px;
+                overflow-x: auto;
+                font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+                font-size: 12px;
+                line-height: 1.45;
+                color: #a5d6ff;
+                margin: 8px 0;
+            }
+            code {
+                font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+                font-size: 12px;
+            }
+            p {
+                margin: 6px 0;
+            }
+            ::-webkit-scrollbar {
+                width: 6px;
+                height: 6px;
+            }
+            ::-webkit-scrollbar-thumb {
+                background: #30363d;
+                border-radius: 3px;
+            }
+        </style>
+        </head>
+        <body>
+            <div class="header-badge">LIVE DIAGNOSTIC HUD</div>
+            \(body)
+        </body>
+        </html>
+        """
+    }
+
+    private func executeGeminiRequest(prompt: String, apiKey: String, isRawHTML: Bool = false) async throws -> String {
         let models = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.6-flash"]
         var lastError: Error? = nil
 
@@ -588,7 +765,7 @@ class GeminiRESTClient {
                           let text = parts.first?["text"] as? String else {
                         throw NSError(domain: "SpatialVision", code: 502, userInfo: [NSLocalizedDescriptionKey: "Parse failure on \(model)"])
                     }
-                    return sanitizeGeneratedCode(text)
+                    return isRawHTML ? text : sanitizeGeneratedCode(text)
                 } else if httpResp.statusCode == 429 || httpResp.statusCode == 404 {
                     print("⚠️ Gemini model '\(model)' returned HTTP \(httpResp.statusCode). Failing over to next model...")
                     let errBody = String(data: data, encoding: .utf8) ?? "Quota exceeded"
@@ -611,11 +788,13 @@ class GeminiRESTClient {
 }
 
 // ============================================================================
-// 7. Global Hotkeys & Application Controller
+// 8. Global Hotkeys & Application Controller
 // ============================================================================
 class AppDelegate: NSObject, NSApplicationDelegate {
     var panel: PillPanel!
     var pillView: PillContentView!
+    var diagnosticPanel: SpatialPanel!
+    var diagnosticWebView: WKWebView!
     var lastProblemText = "", lastGeneratedCode = "", lastStarterCode = ""
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -626,8 +805,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         pillView = PillContentView(frame: NSRect(x: 0, y: 0, width: pillW, height: pillH))
         panel.contentView = pillView
         panel.orderFront(nil)
+
+        let diagW: CGFloat = 480, diagH: CGFloat = 600
+        diagnosticPanel = SpatialPanel(rect: NSRect(x: s.maxX - diagW - 24, y: s.midY - (diagH / 2), width: diagW, height: diagH))
+        diagnosticPanel.alphaValue = 0.0 // Hidden by default until Opt+T or Opt+Z
+
+        let webCfg = WKWebViewConfiguration()
+        diagnosticWebView = WKWebView(frame: diagnosticPanel.contentView!.bounds, configuration: webCfg)
+        diagnosticWebView.autoresizingMask = [.width, .height]
+        diagnosticWebView.setValue(false, forKey: "drawsBackground")
+        diagnosticPanel.contentView?.addSubview(diagnosticWebView)
+        diagnosticPanel.orderFront(nil)
+
         setupHotkeys()
-        print("🚀 SpatialVision Online: Pill Active at Top-Center. Hotkeys Ready.")
+        print("🚀 SpatialVision Online: Micro-HUD & Undetectable Diagnostic Window Ready. Hotkeys Ready.")
     }
 
     func setupHotkeys() {
@@ -643,16 +834,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let opt = UInt32(optionKey)
         let binds: [(UInt32, Int)] = [
             (1, kVK_ANSI_S),
-            (2, kVK_ANSI_R),
-            (3, kVK_ANSI_X),
-            (4, kVK_ANSI_Q)
+            (2, kVK_ANSI_T),
+            (3, kVK_ANSI_Z),
+            (4, kVK_ANSI_I),
+            (5, kVK_ANSI_R),
+            (6, kVK_ANSI_X),
+            (7, kVK_ANSI_Q)
         ]
         for (id, code) in binds {
             var ref: EventHotKeyRef?
             RegisterEventHotKey(UInt32(code), opt, EventHotKeyID(signature: OSType(0x5356), id: id), GetApplicationEventTarget(), 0, &ref)
         }
 
-        let swallow = [0, 11, 8, 2, 14, 3, 5, 4, 34, 38, 40, 37, 46, 45, 31, 35, 32, 9, 13, 16, 6, 23, 22, 26, 28, 25, 29, 41, 44, 39, 43, 47, 50, 42]
+        let activeCodes: Set<Int> = [kVK_ANSI_S, kVK_ANSI_T, kVK_ANSI_Z, kVK_ANSI_I, kVK_ANSI_R, kVK_ANSI_X, kVK_ANSI_Q]
+        let candidateSwallows = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34, 35, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 50]
+        let swallow = candidateSwallows.filter { !activeCodes.contains($0) }
         for c in swallow {
             var ref: EventHotKeyRef?
             RegisterEventHotKey(UInt32(c), opt, EventHotKeyID(signature: OSType(0x5356), id: 9999), GetApplicationEventTarget(), 0, &ref)
@@ -662,9 +858,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func handleHotkey(_ id: UInt32) {
         switch id {
         case 1: triggerSolvePipeline()
-        case 2: resetAll()
-        case 3: panicAbort()
-        case 4: exit(0)
+        case 2: triggerDiagnosticPipeline()
+        case 3: toggleOverlayVisibility()
+        case 4: toggleOverlayInteractivity()
+        case 5: resetAll()
+        case 6: panicAbort()
+        case 7: exit(0)
         default: break
         }
     }
@@ -701,23 +900,93 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func triggerDiagnosticPipeline() {
+        if case .evaluating = pillView.currentState {
+            print("⚠️ Diagnostic evaluation already in progress. Please wait..."); return
+        }
+        pillView.applyState(.evaluating)
+
+        Task { [weak self] in
+            guard let self = self else { return }
+            guard let split = await SpatialOCRManager.shared.captureSplitScreen() else {
+                await MainActor.run { self.pillView.applyState(.error("OCR FAILED")) }; return
+            }
+            self.lastStarterCode = split.editorText
+            print("🔍 Diagnosing Test Console Drawer (\(split.editorText.count) chars)...")
+
+            do {
+                let diagnosticHTML = try await GeminiRESTClient.shared.requestDiagnosticAssistance(
+                    problem: self.lastProblemText.isEmpty ? split.problemText : self.lastProblemText,
+                    currentCode: self.lastGeneratedCode.isEmpty ? split.editorText : self.lastGeneratedCode,
+                    testConsoleOutput: split.editorText
+                )
+
+                let formattedHTML = GeminiRESTClient.shared.formatDiagnosticHTML(diagnosticHTML)
+
+                await MainActor.run {
+                    self.diagnosticWebView.loadHTMLString(formattedHTML, baseURL: nil)
+                    self.diagnosticPanel.alphaValue = 1.0
+                    self.diagnosticPanel.orderFront(nil)
+                    self.pillView.applyState(.diagnosticReady)
+                    print("✨ Diagnostic Analysis Rendered to Spatial HUD.")
+                }
+            } catch {
+                print("❌ Diagnostic Error: \(error.localizedDescription)")
+                await MainActor.run { self.pillView.applyState(.error("DIAG ERROR")) }
+            }
+        }
+    }
+
+    func toggleOverlayVisibility() {
+        let isVisible = diagnosticPanel.alphaValue > 0.05
+        diagnosticPanel.alphaValue = isVisible ? 0.0 : 1.0
+        if !isVisible {
+            diagnosticPanel.orderFront(nil)
+        }
+        print("👁️ Spatial HUD Visibility: \(!isVisible ? "VISIBLE" : "HIDDEN")")
+    }
+
+    func toggleOverlayInteractivity() {
+        diagnosticPanel.isInteractive.toggle()
+        diagnosticPanel.ignoresMouseEvents = !diagnosticPanel.isInteractive
+        if diagnosticPanel.isInteractive {
+            NSApp.activate(ignoringOtherApps: true)
+            diagnosticPanel.makeKeyAndOrderFront(nil)
+            diagnosticPanel.contentView?.layer?.borderColor = NSColor.white.cgColor
+            diagnosticPanel.contentView?.layer?.borderWidth = 2.5
+        } else {
+            diagnosticPanel.resignKey()
+            diagnosticPanel.contentView?.layer?.borderColor = NSColor(red: 0.15, green: 0.85, blue: 0.95, alpha: 0.85).cgColor
+            diagnosticPanel.contentView?.layer?.borderWidth = 2.0
+        }
+        print("🖱️ Spatial HUD Interactivity: \(diagnosticPanel.isInteractive ? "ENABLED (Clicks Accepted)" : "DISABLED (Pass-Through)")")
+    }
+
     func resetAll() {
         BiometricTyper.shared.cancel()
         SpatialOCRManager.shared.reset()
         lastProblemText = ""; lastGeneratedCode = ""; lastStarterCode = ""
+        diagnosticPanel.alphaValue = 0.0
+        diagnosticPanel.isInteractive = false
+        diagnosticPanel.ignoresMouseEvents = true
+        diagnosticPanel.contentView?.layer?.borderColor = NSColor(red: 0.15, green: 0.85, blue: 0.95, alpha: 0.85).cgColor
+        diagnosticPanel.contentView?.layer?.borderWidth = 2.0
         pillView.applyState(.idle)
-        print("🔄 SpatialVision State & Buffers Reset to IDLE.")
+        print("🔄 SpatialVision State, Buffers & Overlay Reset to IDLE.")
     }
 
     func panicAbort() {
         BiometricTyper.shared.cancel()
+        diagnosticPanel.alphaValue = 0.0
+        diagnosticPanel.isInteractive = false
+        diagnosticPanel.ignoresMouseEvents = true
         pillView.applyState(.idle)
-        print("🛑 PANIC ABORT TRIGGERED: Typing halted instantly.")
+        print("🛑 PANIC ABORT TRIGGERED: Typing halted instantly and overlay hidden.")
     }
 }
 
 // ============================================================================
-// 8. Application Entry Point
+// 9. Application Entry Point
 // ============================================================================
 let app = NSApplication.shared
 let delegate = AppDelegate()
