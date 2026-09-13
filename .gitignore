@@ -1,6 +1,8 @@
 # Compiled binaries
 StealthOverlay
 CollabOverlay
+SpatialHUD
+SpatialVision
 
 # macOS system artifacts
 .DS_Store
