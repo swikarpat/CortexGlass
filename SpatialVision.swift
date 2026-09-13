@@ -6,7 +6,7 @@ import CoreMedia
 import CoreGraphics
 
 // ============================================================================
-// 1. Process Guard & Single-Instance Daemon Lock
+// 1. Process Guard & Single-Instance Lock
 // ============================================================================
 let lockPath = "/tmp/com.swikar.spatialvision.lock"
 let lock = open(lockPath, O_CREAT | O_WRONLY, 0o600)
@@ -16,27 +16,18 @@ if lock == -1 || flock(lock, LOCK_EX | LOCK_NB) != 0 { exit(0) }
 // 2. State Machine Definition
 // ============================================================================
 enum PillState {
-    case idle, analyzing, preparing, typing, awaitingRun, evaluating, readyToInject, awaitingSubmit, error(String)
+    case idle, analyzing, preparing, typing, done, error(String)
 
-    private var meta: (badge: String, sub: String, icon: String, color: NSColor) {
+    var meta: (badge: String, sub: String, icon: String, color: NSColor) {
         switch self {
         case .idle:           return ("READY", "[Opt+S to Solve]", "●", NSColor(white: 0.45, alpha: 0.85))
         case .analyzing:      return ("ANALYZING", "[Vision OCR + LLM]", "⚡", NSColor(red: 0.98, green: 0.65, blue: 0.12, alpha: 0.95))
         case .preparing:      return ("PREPARING...", "[Deliberating 4s...]", "🤔", NSColor(red: 0.98, green: 0.65, blue: 0.12, alpha: 0.95))
         case .typing:         return ("TYPING...", "[DO NOT TOUCH KB/MOUSE]", "⌨️", NSColor(red: 0.15, green: 0.78, blue: 0.98, alpha: 0.95))
-        case .awaitingRun:    return ("RUN TESTS NOW", "[Click 'Run Code' in Browser]", "👉", NSColor(red: 0.10, green: 0.88, blue: 0.45, alpha: 1.0))
-        case .evaluating:     return ("EVALUATING", "[Diagnosing Console Drawer]", "⚠️", NSColor(red: 0.95, green: 0.25, blue: 0.35, alpha: 0.95))
-        case .readyToInject:  return ("INJECT PATCH", "[Select old code & Opt+T]", "👉", NSColor(red: 0.15, green: 0.85, blue: 0.95, alpha: 1.0))
-        case .awaitingSubmit: return ("ALL PASSED", "[Ready to Click Submit]", "🚀", NSColor(red: 0.05, green: 0.95, blue: 0.40, alpha: 1.0))
-        case .error(let msg):
-            let sub = msg.contains("Opt+T") ? "[Opt+T to Diagnose & Patch]" : "[Opt+R to Reset]"
-            return (msg, sub, "❌", NSColor(red: 0.95, green: 0.15, blue: 0.15, alpha: 1.0))
+        case .done:           return ("DONE - RUN TESTS", "[Click Run & Submit manually]", "🚀", NSColor(red: 0.05, green: 0.92, blue: 0.45, alpha: 1.0))
+        case .error(let msg): return (msg.isEmpty ? "ERROR" : msg, "[Opt+R to Reset]", "❌", NSColor(red: 0.95, green: 0.15, blue: 0.15, alpha: 1.0))
         }
     }
-    var badgeText: String { meta.badge }
-    var subText: String { meta.sub }
-    var icon: String { meta.icon }
-    var borderColor: NSColor { meta.color }
 }
 
 // ============================================================================
@@ -46,33 +37,18 @@ class PillContentView: NSView {
     private let iconLabel = NSTextField(labelWithString: "●")
     private let titleLabel = NSTextField(labelWithString: "READY")
     private let hintLabel = NSTextField(labelWithString: "[Opt+S to Solve]")
-    private var flashTimer: Timer?
-    private var isFlashVisible = true
     var currentState: PillState = .idle
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.cornerRadius = 20
-        layer?.masksToBounds = true
-        layer?.borderWidth = 1.8
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true; layer?.cornerRadius = 20; layer?.masksToBounds = true; layer?.borderWidth = 1.8
         layer?.backgroundColor = NSColor(red: 0.06, green: 0.08, blue: 0.12, alpha: 0.92).cgColor
-
-        iconLabel.font = .systemFont(ofSize: 13, weight: .bold)
-        iconLabel.alignment = .center
-        iconLabel.frame = NSRect(x: 10, y: 11, width: 22, height: 20)
-        addSubview(iconLabel)
-
-        titleLabel.font = .monospacedSystemFont(ofSize: 11, weight: .heavy)
-        titleLabel.textColor = .white
-        titleLabel.frame = NSRect(x: 34, y: 20, width: 220, height: 16)
-        addSubview(titleLabel)
-
-        hintLabel.font = .monospacedSystemFont(ofSize: 9.5, weight: .medium)
-        hintLabel.textColor = NSColor(white: 0.72, alpha: 0.9)
-        hintLabel.frame = NSRect(x: 34, y: 6, width: 220, height: 14)
-        addSubview(hintLabel)
-
+        for (lbl, f, r) in [(iconLabel, NSFont.systemFont(ofSize: 13, weight: .bold), NSRect(x: 10, y: 11, width: 22, height: 20)),
+                            (titleLabel, NSFont.monospacedSystemFont(ofSize: 11, weight: .heavy), NSRect(x: 34, y: 20, width: 220, height: 16)),
+                            (hintLabel, NSFont.monospacedSystemFont(ofSize: 9.5, weight: .medium), NSRect(x: 34, y: 6, width: 220, height: 14))] {
+            lbl.font = f; lbl.frame = r; addSubview(lbl)
+        }
+        iconLabel.alignment = .center; titleLabel.textColor = .white; hintLabel.textColor = NSColor(white: 0.72, alpha: 0.9)
         applyState(.idle)
     }
 
@@ -80,45 +56,33 @@ class PillContentView: NSView {
 
     func applyState(_ state: PillState) {
         currentState = state
-        flashTimer?.invalidate()
-        flashTimer = nil
-
-        iconLabel.stringValue = state.icon
-        titleLabel.stringValue = state.badgeText
-        titleLabel.textColor = (state.badgeText == "READY") ? NSColor(white: 0.85, alpha: 1) : state.borderColor
-        hintLabel.stringValue = state.subText
-        layer?.borderColor = state.borderColor.cgColor
-
-        switch state {
-        case .awaitingRun, .readyToInject:
-            flashTimer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: true) { [weak self] _ in
-                guard let self = self else { return }
-                self.isFlashVisible.toggle()
-                self.layer?.borderColor = self.isFlashVisible ? state.borderColor.cgColor : NSColor.clear.cgColor
-            }
-        default: break
-        }
+        let m = state.meta
+        iconLabel.stringValue = m.icon; titleLabel.stringValue = m.badge
+        titleLabel.textColor = (m.badge == "READY") ? NSColor(white: 0.85, alpha: 1) : m.color
+        hintLabel.stringValue = m.sub; layer?.borderColor = m.color.cgColor
     }
 }
 
 class PillPanel: NSPanel {
     init(rect: NSRect) {
         super.init(contentRect: rect, styleMask: [.nonactivatingPanel, .fullSizeContentView], backing: .buffered, defer: false)
-        sharingType = .none // Mathematically stripped from WebRTC, Zoom, Teams, and browser hooks
-        level = .floating
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        isOpaque = false
-        backgroundColor = .clear
-        ignoresMouseEvents = true
-        hasShadow = false
+        sharingType = .none // Stripped from screen capture, browser hooks, and WebRTC
+        level = .floating; collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        isOpaque = false; backgroundColor = .clear; ignoresMouseEvents = true; hasShadow = false
     }
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 }
 
 // ============================================================================
-// 4. Biometric Human-Jitter Typing Engine (18-22 WPM with Anti-Telemetry Shield)
+// 4. Biometric Typer (Authentic Human Cognitive Simulation & Pure Arrow Navigation)
 // ============================================================================
+struct IntentionalMistake {
+    let flawedLine: String
+    let mistakeCharsToBackspace: Int
+    let correctionToType: String
+}
+
 class BiometricTyper {
     static let shared = BiometricTyper()
     private let lock = NSLock()
@@ -132,15 +96,14 @@ class BiometricTyper {
 
     func cancel() { isCancelled = true }
 
-    // Sliced sleep in 15ms increments for sub-15ms cancellation latency
-    private func interruptibleSleep(microseconds: useconds_t) -> Bool {
+    // Sliced sleep in 15ms increments for instant cancellation (<15ms latency)
+    func interruptibleSleep(microseconds: useconds_t) -> Bool {
         var remaining = microseconds
-        let step: useconds_t = 15_000
         while remaining > 0 {
             if isCancelled { return false }
-            let sleepTime = min(remaining, step)
-            usleep(sleepTime)
-            remaining -= sleepTime
+            let step = min(remaining, 15_000)
+            usleep(step)
+            remaining -= step
         }
         return !isCancelled
     }
@@ -149,17 +112,11 @@ class BiometricTyper {
         DispatchQueue.main.async { callback(state) }
     }
 
-    // Box-Muller Gaussian Inter-Keystroke Interval (µ = 290ms, σ = 75ms, clamped [150, 480]ms) -> ~20 WPM baseline
-    private func sampleGaussianIKI() -> useconds_t {
+    // Box-Muller Gaussian IKI: µ = 290ms, σ = 75ms, clamped [150, 480]ms (~20 WPM baseline)
+    func sampleGaussianIKI() -> useconds_t {
         let u1 = max(1e-6, Double.random(in: 0.0...1.0)), u2 = Double.random(in: 0.0...1.0)
         let z = sqrt(-2.0 * log(u1)) * cos(2.0 * .pi * u2)
-        let val = max(150.0, min(480.0, 290.0 + z * 75.0))
-        return useconds_t(val * 1000.0)
-    }
-
-    private func isSyntaxBoundary(prev: Character?, current: Character) -> Bool {
-        guard let p = prev else { return false }
-        return p == ":" || p == "{" || p == ";"
+        return useconds_t(max(150.0, min(480.0, 290.0 + z * 75.0)) * 1000.0)
     }
 
     private func adjacentTypoKey(for c: Character) -> Character {
@@ -173,30 +130,71 @@ class BiometricTyper {
         return c.isUppercase ? Character(match.uppercased()) : match
     }
 
-    private func postUnicodeChar(_ char: Character) {
+    func postUnicodeChar(_ char: Character) {
         var unichars = Array(String(char).utf16)
         guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
               let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else { return }
+        down.flags = []; up.flags = []
         down.keyboardSetUnicodeString(stringLength: unichars.count, unicodeString: &unichars)
         up.keyboardSetUnicodeString(stringLength: unichars.count, unicodeString: &unichars)
-        down.post(tap: .cghidEventTap)
-        _ = interruptibleSleep(microseconds: useconds_t(Int.random(in: 14000...24000)))
+        down.post(tap: .cghidEventTap); _ = interruptibleSleep(microseconds: useconds_t(Int.random(in: 14000...24000)))
         up.post(tap: .cghidEventTap)
     }
 
-    private func postVirtualKey(code: CGKeyCode, flags: CGEventFlags = []) {
+    // Pure virtual key post: NEVER uses Command modifier to prevent browser shortcut interception
+    func postVirtualKey(code: CGKeyCode, flags: CGEventFlags = []) {
         guard let down = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true),
               let up = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: false) else { return }
-        if !flags.isEmpty { down.flags = flags; up.flags = flags }
-        down.post(tap: .cghidEventTap)
-        _ = interruptibleSleep(microseconds: useconds_t(Int.random(in: 14000...25000)))
+        down.flags = flags
+        up.flags = [] // Always ensure key-up clears modifiers to prevent modifier latching
+        down.post(tap: .cghidEventTap); _ = interruptibleSleep(microseconds: useconds_t(Int.random(in: 14000...25000)))
         up.post(tap: .cghidEventTap)
     }
 
-    // Dismisses open Monaco/browser autocomplete suggestions so Return/Tab never get hijacked
-    private func dismissAutocomplete() {
-        postVirtualKey(code: 53) // kVK_Escape = 53
-        _ = interruptibleSleep(microseconds: 25_000)
+    func backspace(count: Int) {
+        for _ in 0..<count {
+            if isCancelled { break }
+            postVirtualKey(code: 51)
+            _ = interruptibleSleep(microseconds: useconds_t(Int.random(in: 80_000...125_000)))
+        }
+    }
+
+    func arrowKey(code: CGKeyCode, count: Int) {
+        dismissAutocomplete()
+        for _ in 0..<count {
+            if isCancelled { break }
+            postVirtualKey(code: code)
+            _ = interruptibleSleep(microseconds: useconds_t(Int.random(in: 170_000...250_000)))
+        }
+    }
+
+    func rightArrow(count: Int) {
+        for _ in 0..<count {
+            if isCancelled { break }
+            postVirtualKey(code: 124) // Right Arrow
+            _ = interruptibleSleep(microseconds: useconds_t(Int.random(in: 25_000...40_000)))
+        }
+    }
+
+    func leftArrow(count: Int) {
+        for _ in 0..<count {
+            if isCancelled { break }
+            postVirtualKey(code: 123) // Left Arrow
+            _ = interruptibleSleep(microseconds: useconds_t(Int.random(in: 25_000...40_000)))
+        }
+    }
+
+    func typeString(_ str: String) {
+        for ch in str {
+            if isCancelled { break }
+            postUnicodeChar(ch)
+            _ = interruptibleSleep(microseconds: sampleGaussianIKI())
+        }
+    }
+
+    // Dismiss open Monaco/browser autocomplete popover (kVK_Escape = 53)
+    func dismissAutocomplete() {
+        postVirtualKey(code: 53); _ = interruptibleSleep(microseconds: 25_000)
     }
 
     private func countLeadingSpaces(_ line: String) -> Int {
@@ -209,209 +207,258 @@ class BiometricTyper {
                combined.contains("->") || combined.contains("python") || combined.contains("self.") || combined.contains("range(")
     }
 
-    // Execute natural typing sequence with Monaco/Ace auto-indentation reconciliation
+    // Synthesizes a subtle, realistic candidate flaw on Line 1 to be corrected later from Line 5:
+    // - Loop: range(1, n + 1) -> range(1, n) (classic off-by-one)
+    // - Data structure: set() / {} -> []
+    // - Accumulator: 0 -> 1 or 1 -> 0
+    // - Fallback: omit closing token or append - 1
+    func generateIntentionalMistake(for line: String) -> IntentionalMistake? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 6 else { return nil }
+
+        if line.contains("+ 1):") {
+            let flawed = line.replacingOccurrences(of: "+ 1):", with: "):")
+            return IntentionalMistake(flawedLine: flawed, mistakeCharsToBackspace: 2, correctionToType: "+ 1):")
+        } else if line.contains("+ 1)") {
+            let flawed = line.replacingOccurrences(of: "+ 1)", with: ")")
+            return IntentionalMistake(flawedLine: flawed, mistakeCharsToBackspace: 1, correctionToType: "+ 1)")
+        } else if line.contains("set()") {
+            let flawed = line.replacingOccurrences(of: "set()", with: "[]")
+            return IntentionalMistake(flawedLine: flawed, mistakeCharsToBackspace: 2, correctionToType: "set()")
+        } else if line.hasSuffix("[]") {
+            let flawed = String(line.dropLast(2)) + "0"
+            return IntentionalMistake(flawedLine: flawed, mistakeCharsToBackspace: 1, correctionToType: "[]")
+        } else if line.hasSuffix("{}") {
+            let flawed = String(line.dropLast(2)) + "[]"
+            return IntentionalMistake(flawedLine: flawed, mistakeCharsToBackspace: 2, correctionToType: "{}")
+        } else if line.hasSuffix("= 0") {
+            let flawed = String(line.dropLast(1)) + "1"
+            return IntentionalMistake(flawedLine: flawed, mistakeCharsToBackspace: 1, correctionToType: "0")
+        } else if line.hasSuffix("= 1") {
+            let flawed = String(line.dropLast(1)) + "0"
+            return IntentionalMistake(flawedLine: flawed, mistakeCharsToBackspace: 1, correctionToType: "1")
+        } else if line.hasSuffix("True") {
+            let flawed = String(line.dropLast(4)) + "False"
+            return IntentionalMistake(flawedLine: flawed, mistakeCharsToBackspace: 5, correctionToType: "True")
+        } else if line.hasSuffix("False") {
+            let flawed = String(line.dropLast(5)) + "True"
+            return IntentionalMistake(flawedLine: flawed, mistakeCharsToBackspace: 4, correctionToType: "False")
+        } else if line.hasSuffix(")") {
+            let flawed = String(line.dropLast(1))
+            return IntentionalMistake(flawedLine: flawed, mistakeCharsToBackspace: 0, correctionToType: ")")
+        } else if !trimmed.hasSuffix(":") {
+            let flawed = line + " - 1"
+            return IntentionalMistake(flawedLine: flawed, mistakeCharsToBackspace: 4, correctionToType: "")
+        }
+        return nil
+    }
+
+    // CRITICAL SAFEGUARD: Calculate the stop index on Line 5 strictly BEFORE any opening quote ("') or bracket/paren ([{(
+    private func calculateRetroStopTarget(trimmedContent: String) -> Int {
+        let chars = Array(trimmedContent)
+        guard chars.count >= 3 else { return -1 }
+
+        let dangerSet: Set<Character> = ["(", "[", "{", "\"", "'"]
+        let firstDangerIdx = chars.firstIndex(where: { dangerSet.contains($0) }) ?? chars.count
+
+        // Ensure there is room for at least a token before any dangerous auto-closing character
+        guard firstDangerIdx >= 2 else { return -1 }
+
+        // Prefer stopping right after the first space before any danger char (e.g. "if ", "elif ", "while ", "return ")
+        if let firstSpaceIdx = chars[..<firstDangerIdx].firstIndex(of: " ") {
+            return firstSpaceIdx
+        }
+
+        // Otherwise stop at the character immediately preceding the danger char (e.g. "print" before "(")
+        return firstDangerIdx - 1
+    }
+
+    // Natural typing execution with authentic candidate thought simulation:
+    // - Pre-deliberation: 3.5s - 5.0s
+    // - Line 1: subtle intentional flaw
+    // - Line 2: 12-16 char false start & retraction
+    // - Lines 3 & 4: clean typing with 2.2s - 3.5s return transitions
+    // - Line 5: stop strictly before quotes/brackets/parens, retro double-take to Line 1, fix, return down, resume
     func typeCode(_ code: String, starterCode: String = "", onProgress: @escaping (PillState) -> Void) {
         isCancelled = false
         workQueue.async {
-            // 1. Pre-typing Deliberation Phase: 3.5 to 5.2s authentic thinking window
             self.notifyProgress(.preparing, callback: onProgress)
-            let deliberation = useconds_t(Double.random(in: 3.5...5.2) * 1_000_000)
-            if !self.interruptibleSleep(microseconds: deliberation) {
-                self.notifyProgress(.idle, callback: onProgress)
-                return
+            if !self.interruptibleSleep(microseconds: useconds_t(Double.random(in: 3.5...5.0) * 1_000_000)) {
+                self.notifyProgress(.idle, callback: onProgress); return
             }
-
             self.notifyProgress(.typing, callback: onProgress)
 
             let isPythonOrFunc = self.isPythonOrFunctionContext(code: code, starterCode: starterCode)
-            var preparedCode = code
+            var codeLines = code.components(separatedBy: "\n")
 
-            // Safeguard: If target is Python / function definition and first line has 0 indent, promote by 4 spaces
-            if isPythonOrFunc {
-                var codeLines = code.components(separatedBy: "\n")
-                if let firstIdx = codeLines.firstIndex(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
-                    let firstLine = codeLines[firstIdx]
-                    if self.countLeadingSpaces(firstLine) == 0 {
-                        let subsequent = codeLines.dropFirst(firstIdx + 1).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                        let hasIndented = subsequent.contains(where: { self.countLeadingSpaces($0) >= 4 })
-                        if hasIndented {
-                            codeLines[firstIdx] = "    " + firstLine
-                        } else {
-                            for i in 0..<codeLines.count where !codeLines[i].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                codeLines[i] = "    " + codeLines[i]
-                            }
-                        }
-                        preparedCode = codeLines.joined(separator: "\n")
-                    }
+            if isPythonOrFunc, let firstIdx = codeLines.firstIndex(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+                if self.countLeadingSpaces(codeLines[firstIdx]) == 0 {
+                    let subsequent = codeLines.dropFirst(firstIdx + 1).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                    let hasIndented = subsequent.contains(where: { self.countLeadingSpaces($0) >= 4 })
+                    if hasIndented { codeLines[firstIdx] = "    " + codeLines[firstIdx] }
+                    else { for i in 0..<codeLines.count where !codeLines[i].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { codeLines[i] = "    " + codeLines[i] } }
                 }
             }
 
-            var charCount = 0
-            var typoTarget = Int.random(in: 35...60)
-            var prevChar: Character? = nil
-            let lines = preparedCode.components(separatedBy: "\n")
-            var expectedEditorIndent = 0
+            let substantiveIndices = codeLines.indices.filter { codeLines[$0].trimmingCharacters(in: .whitespaces).count >= 4 }
+            let hasMultiLineScript = substantiveIndices.count >= 4
+            let line1Idx = hasMultiLineScript ? substantiveIndices[0] : -1
+            let line2Idx = hasMultiLineScript ? substantiveIndices[1] : -1
+            let retroTriggerLineIdx = hasMultiLineScript ? substantiveIndices[min(4, substantiveIndices.count - 1)] : -1
 
-            for (lineIdx, line) in lines.enumerated() {
+            let line1Mistake = (line1Idx >= 0) ? self.generateIntentionalMistake(for: codeLines[line1Idx]) : nil
+            var charCount = 0, typoTarget = Int.random(in: 35...60), prevChar: Character? = nil
+            var expectedEditorIndent = 0, hasCorrectedLine1 = false
+
+            for (lineIdx, line) in codeLines.enumerated() {
                 if self.isCancelled { break }
 
-                // Natural Cognitive Freeze ("Glance at Problem"): 25% probability every 2-3 lines (4.5s to 7.0s)
+                // Authentic glance at problem / hesitation
                 if lineIdx > 0 && (lineIdx % 2 == 0 || lineIdx % 3 == 0) && Double.random(in: 0...1) < 0.25 {
-                    let glanceDelay = useconds_t(Double.random(in: 4.5...7.0) * 1_000_000)
-                    if !self.interruptibleSleep(microseconds: glanceDelay) { break }
+                    if !self.interruptibleSleep(microseconds: useconds_t(Double.random(in: 4.5...7.0) * 1_000_000)) { break }
                 }
-
-                // Newline start hesitation: 600ms to 1200ms pause before typing indentation or content
                 if lineIdx > 0 {
-                    let lineStartPause = useconds_t(Double.random(in: 0.60...1.20) * 1_000_000)
-                    if !self.interruptibleSleep(microseconds: lineStartPause) { break }
+                    let lineStartDelay = useconds_t(Double.random(in: 0.60...1.20) * 1_000_000)
+                    if !self.interruptibleSleep(microseconds: lineStartDelay) { break }
                 }
 
-                // Measure leading indentation
-                let actualIndent = self.countLeadingSpaces(line)
-                let trimmedContent = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Determine active line content (Line 1 uses flawedLine if mistake was planned)
+                let activeLineToType = (lineIdx == line1Idx && line1Mistake != nil) ? line1Mistake!.flawedLine : line
+                let actualIndent = self.countLeadingSpaces(activeLineToType)
+                let trimmedContent = activeLineToType.trimmingCharacters(in: .whitespacesAndNewlines)
 
-                // Indentation Reconciliation against Monaco/Ace auto-indent state
-                if trimmedContent.isEmpty {
-                    // Blank line: preserve expectedEditorIndent
-                } else if lineIdx == 0 {
-                    var indentToType = actualIndent
-                    if isPythonOrFunc && indentToType == 0 { indentToType = 4 }
-                    for _ in 0..<indentToType {
-                        if self.isCancelled { break }
-                        self.postUnicodeChar(" ")
-                        if !self.interruptibleSleep(microseconds: self.sampleGaussianIKI()) { break }
-                    }
-                } else {
-                    if actualIndent > expectedEditorIndent {
-                        // Type delta spaces
+                // Indentation reconciliation
+                if !trimmedContent.isEmpty {
+                    if lineIdx == 0 {
+                        let toType = (isPythonOrFunc && actualIndent == 0) ? 4 : actualIndent
+                        for _ in 0..<toType {
+                            if self.isCancelled { break }
+                            self.postUnicodeChar(" "); _ = self.interruptibleSleep(microseconds: self.sampleGaussianIKI())
+                        }
+                    } else if actualIndent > expectedEditorIndent {
                         for _ in 0..<(actualIndent - expectedEditorIndent) {
                             if self.isCancelled { break }
-                            self.postUnicodeChar(" ")
-                            if !self.interruptibleSleep(microseconds: self.sampleGaussianIKI()) { break }
+                            self.postUnicodeChar(" "); _ = self.interruptibleSleep(microseconds: self.sampleGaussianIKI())
                         }
                     } else if actualIndent < expectedEditorIndent {
-                        // Dedent: dismiss any open autocomplete popover first so Shift+Tab isn't trapped
                         self.dismissAutocomplete()
                         let excess = expectedEditorIndent - actualIndent
                         for _ in 0..<(excess / 4) {
                             if self.isCancelled { break }
-                            self.postVirtualKey(code: 48, flags: .maskShift) // Shift + Tab
-                            if !self.interruptibleSleep(microseconds: 35_000) { break }
+                            self.postVirtualKey(code: 48, flags: .maskShift); _ = self.interruptibleSleep(microseconds: 35_000)
                         }
-                        for _ in 0..<(excess % 4) {
-                            if self.isCancelled { break }
-                            self.postVirtualKey(code: 51) // Backspace
-                            if !self.interruptibleSleep(microseconds: 25_000) { break }
-                        }
+                        self.backspace(count: excess % 4)
                     }
                 }
 
                 if self.isCancelled { break }
 
-                // Cognitive Variable Revision: Every 4 lines, 20% chance of drafting a temporary token, then backspacing
-                if lineIdx > 0 && lineIdx % 4 == 0 && trimmedContent.count > 6 && Double.random(in: 0...1) < 0.20 {
-                    let draftTokens = ["temp", "res", "ans", "val"]
-                    if let draft = draftTokens.randomElement() {
-                        for ch in draft {
-                            if self.isCancelled { break }
-                            self.postUnicodeChar(ch)
-                            _ = self.interruptibleSleep(microseconds: self.sampleGaussianIKI())
-                        }
-                        _ = self.interruptibleSleep(microseconds: useconds_t(Double.random(in: 0.45...0.75) * 1_000_000))
-                        for _ in 0..<draft.count {
-                            if self.isCancelled { break }
-                            self.postVirtualKey(code: 51) // Backspace
-                            _ = self.interruptibleSleep(microseconds: useconds_t(Int.random(in: 90000...130000)))
-                        }
-                        _ = self.interruptibleSleep(microseconds: 250_000)
+                // Line 2 (False Start & Retraction)
+                if lineIdx == line2Idx {
+                    let futurePool = codeLines.dropFirst(line2Idx + 1).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { $0.count >= 8 }
+                    if let futureSnippet = futurePool.first {
+                        let fragLen = min(futureSnippet.count, Int.random(in: 12...16))
+                        let falseStart = String(futureSnippet.prefix(fragLen))
+                        self.typeString(falseStart)
+                        _ = self.interruptibleSleep(microseconds: 800_000) // Realization freeze
+                        self.backspace(count: falseStart.count) // Backspace to base indentation
+                        _ = self.interruptibleSleep(microseconds: 350_000)
                     }
                 }
 
-                // Type non-whitespace code content with human jitter and multi-character typo overruns
                 let chars = Array(trimmedContent)
                 var charIdx = 0
+                let partialStopTarget = (lineIdx == retroTriggerLineIdx && line1Mistake != nil) ? self.calculateRetroStopTarget(trimmedContent: trimmedContent) : -1
+
                 while charIdx < chars.count {
                     if self.isCancelled { break }
                     let char = chars[charIdx]
 
-                    // Cognitive hesitation pause at syntax boundaries (450ms - 950ms)
-                    if self.isSyntaxBoundary(prev: prevChar, current: char) {
-                        let hesitation = useconds_t(Double.random(in: 0.45...0.95) * 1_000_000)
-                        if !self.interruptibleSleep(microseconds: hesitation) { break }
+                    if let p = prevChar, (p == ":" || p == "{" || p == ";") {
+                        if !self.interruptibleSleep(microseconds: useconds_t(Double.random(in: 0.45...0.95) * 1_000_000)) { break }
                     }
 
-                    // Multi-Character Typo Overrun Injection (every 35-60 characters)
+                    // Typo Overrun Injection
                     charCount += 1
                     if charCount >= typoTarget && char.isLetter {
-                        charCount = 0
-                        typoTarget = Int.random(in: 35...60)
-
-                        // Type adjacent wrong character
-                        let badChar = self.adjacentTypoKey(for: char)
-                        self.postUnicodeChar(badChar)
+                        charCount = 0; typoTarget = Int.random(in: 35...60)
+                        self.postUnicodeChar(self.adjacentTypoKey(for: char))
                         _ = self.interruptibleSleep(microseconds: self.sampleGaussianIKI())
 
-                        // Reflex Overrun: type 1 upcoming character before the brain realizes the mistake
-                        var overrunCount = 1
+                        var overrun = 1
                         if charIdx + 1 < chars.count && chars[charIdx + 1].isLetter {
-                            overrunCount += 1
-                            self.postUnicodeChar(chars[charIdx + 1])
+                            overrun += 1; self.postUnicodeChar(chars[charIdx + 1])
                             _ = self.interruptibleSleep(microseconds: self.sampleGaussianIKI())
                         }
-
-                        // Cognitive realization freeze (350ms - 600ms)
-                        let realizePause = useconds_t(Double.random(in: 0.35...0.60) * 1_000_000)
-                        if !self.interruptibleSleep(microseconds: realizePause) { break }
-
-                        // Human cadence backspacing to erase the typo and overrun
-                        for _ in 0..<overrunCount {
-                            if self.isCancelled { break }
-                            self.postVirtualKey(code: 51) // Backspace
-                            _ = self.interruptibleSleep(microseconds: useconds_t(Int.random(in: 90000...140000)))
-                        }
-                        _ = self.interruptibleSleep(microseconds: 200_000) // Brief recovery
+                        if !self.interruptibleSleep(microseconds: useconds_t(Double.random(in: 0.35...0.60) * 1_000_000)) { break }
+                        self.backspace(count: overrun)
+                        _ = self.interruptibleSleep(microseconds: 200_000)
                     }
 
-                    // Type actual character
                     self.postUnicodeChar(char)
                     prevChar = char
 
-                    // Token & word boundary hesitations
-                    if char == " " || char == "," || char == "." || char == "(" || char == ")" {
-                        let punctPause = useconds_t(Double.random(in: 0.45...0.85) * 1_000_000)
-                        if !self.interruptibleSleep(microseconds: punctPause) { break }
-                    } else if char == "=" || char == "+" || char == "-" || char == "%" || char == ":" || char == "<" || char == ">" {
-                        let opPause = useconds_t(Double.random(in: 0.50...0.95) * 1_000_000)
-                        if !self.interruptibleSleep(microseconds: opPause) { break }
+                    // Line 5 (The Retroactive Double-Take)
+                    if lineIdx == retroTriggerLineIdx && !hasCorrectedLine1 && charIdx == partialStopTarget, let m = line1Mistake {
+                        hasCorrectedLine1 = true
+                        _ = self.interruptibleSleep(microseconds: 1_800_000) // Realization hesitation
+                        self.dismissAutocomplete(); _ = self.interruptibleSleep(microseconds: 40_000)
+                        self.dismissAutocomplete(); _ = self.interruptibleSleep(microseconds: 40_000)
+
+                        let jumpCount = lineIdx - line1Idx
+                        self.arrowKey(code: 126, count: jumpCount)
+
+                        let line1InitialLen = m.flawedLine.count
+                        let line5Col = actualIndent + (charIdx + 1)
+                        let colOnLine1 = min(line5Col, line1InitialLen)
+                        let deltaUp = line1InitialLen - colOnLine1
+                        if deltaUp > 0 { self.rightArrow(count: deltaUp) }
+                        else if deltaUp < 0 { self.leftArrow(count: abs(deltaUp)) }
+
+                        _ = self.interruptibleSleep(microseconds: useconds_t(Int.random(in: 350_000...500_000)))
+                        if m.mistakeCharsToBackspace > 0 { self.backspace(count: m.mistakeCharsToBackspace) }
+                        _ = self.interruptibleSleep(microseconds: useconds_t(Int.random(in: 300_000...450_000)))
+                        if !m.correctionToType.isEmpty { self.typeString(m.correctionToType) }
+
+                        _ = self.interruptibleSleep(microseconds: 700_000) // Review
+                        self.dismissAutocomplete(); _ = self.interruptibleSleep(microseconds: 40_000)
+                        self.dismissAutocomplete(); _ = self.interruptibleSleep(microseconds: 40_000)
+                        self.arrowKey(code: 125, count: jumpCount)
+
+                        let line1FinalLen = line1InitialLen - m.mistakeCharsToBackspace + m.correctionToType.count
+                        let currentLine5Col = min(line1FinalLen, line5Col)
+                        let delta = line5Col - currentLine5Col
+                        if delta > 0 { self.rightArrow(count: delta) }
+                        else if delta < 0 { self.leftArrow(count: abs(delta)) }
+
+                        _ = self.interruptibleSleep(microseconds: 500_000)
                     }
 
-                    let iki = self.sampleGaussianIKI()
-                    if !self.interruptibleSleep(microseconds: iki) { break }
+                    if " ,.()".contains(char) {
+                        if !self.interruptibleSleep(microseconds: useconds_t(Double.random(in: 0.45...0.85) * 1_000_000)) { break }
+                    } else if "=+-:%<>".contains(char) {
+                        if !self.interruptibleSleep(microseconds: useconds_t(Double.random(in: 0.50...0.95) * 1_000_000)) { break }
+                    }
+
+                    if !self.interruptibleSleep(microseconds: self.sampleGaussianIKI()) { break }
                     charIdx += 1
                 }
 
-                // Determine expectedEditorIndent for subsequent line
                 if !trimmedContent.isEmpty {
-                    let cleanLine = trimmedContent.components(separatedBy: "#").first?.trimmingCharacters(in: .whitespaces) ?? trimmedContent
-                    expectedEditorIndent = (cleanLine.hasSuffix(":") || cleanLine.hasSuffix("{")) ? (actualIndent + 4) : actualIndent
+                    let clean = trimmedContent.components(separatedBy: "#").first?.trimmingCharacters(in: .whitespaces) ?? trimmedContent
+                    expectedEditorIndent = (clean.hasSuffix(":") || clean.hasSuffix("{")) ? (actualIndent + 4) : actualIndent
                 }
 
-                // Newline handling: Dismiss autocomplete popup with Escape before Return to avoid suggestion interception
-                if lineIdx < lines.count - 1 {
+                if lineIdx < codeLines.count - 1 {
                     self.dismissAutocomplete()
-                    self.postVirtualKey(code: 36) // Return (kVK_Return = 36)
-                    let returnDelay = useconds_t(Double.random(in: 2.2...3.8) * 1_000_000)
+                    self.postVirtualKey(code: 36) // Return
+                    let returnDelay = useconds_t(Double.random(in: 2.2...3.5) * 1_000_000)
                     if !self.interruptibleSleep(microseconds: returnDelay) { break }
                     prevChar = "\n"
                 }
             }
 
-            if !self.isCancelled {
-                self.notifyProgress(.awaitingRun, callback: onProgress)
-            } else {
-                self.notifyProgress(.idle, callback: onProgress)
-            }
+            self.notifyProgress(self.isCancelled ? .idle : .done, callback: onProgress)
         }
     }
 }
@@ -422,36 +469,26 @@ class BiometricTyper {
 class SpatialOCRManager {
     static let shared = SpatialOCRManager()
     private var accumulatedProblemLines: [String] = []
-
     func reset() { accumulatedProblemLines.removeAll() }
 
     func captureSplitScreen() async -> (problemText: String, editorText: String)? {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             guard let display = content.displays.first else { return nil }
-
             let myPID = ProcessInfo.processInfo.processIdentifier
             let excluded = content.windows.filter { $0.owningApplication?.processID == myPID }
 
             let config = SCStreamConfiguration()
-            config.width = Int(display.width)
-            config.height = Int(display.height)
-            config.showsCursor = false
-
+            config.width = Int(display.width); config.height = Int(display.height); config.showsCursor = false
             let filter = SCContentFilter(display: display, excludingWindows: excluded)
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
 
             let request = VNRecognizeTextRequest()
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = false
-            request.recognitionLanguages = ["en-US"]
-
+            request.recognitionLevel = .accurate; request.usesLanguageCorrection = false; request.recognitionLanguages = ["en-US"]
             try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
             guard let results = request.results, !results.isEmpty else { return nil }
 
-            var leftObs: [(text: String, box: CGRect)] = []
-            var rightObs: [(text: String, box: CGRect)] = []
-
+            var leftObs: [(text: String, box: CGRect)] = [], rightObs: [(text: String, box: CGRect)] = []
             for obs in results {
                 guard let text = obs.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { continue }
                 if obs.boundingBox.midX <= 0.52 { leftObs.append((text, obs.boundingBox)) }
@@ -460,7 +497,6 @@ class SpatialOCRManager {
 
             let sortedLeft = leftObs.sorted { $0.box.midY > $1.box.midY }.map { $0.text }
             let sortedRight = rightObs.sorted { $0.box.midY > $1.box.midY }.map { $0.text }
-
             return (problemText: stitchScrollBuffer(incomingLines: sortedLeft), editorText: sortedRight.joined(separator: "\n"))
         } catch {
             print("❌ OCR Error: \(error.localizedDescription)")
@@ -470,18 +506,14 @@ class SpatialOCRManager {
 
     private func stitchScrollBuffer(incomingLines: [String]) -> String {
         guard !incomingLines.isEmpty else { return accumulatedProblemLines.joined(separator: "\n") }
-        if accumulatedProblemLines.isEmpty {
-            accumulatedProblemLines = incomingLines
-            return incomingLines.joined(separator: "\n")
-        }
+        if accumulatedProblemLines.isEmpty { accumulatedProblemLines = incomingLines; return incomingLines.joined(separator: "\n") }
 
-        let existingTokens = Set(accumulatedProblemLines.joined(separator: " ").lowercased().components(separatedBy: .whitespacesAndNewlines))
-        let incomingTokens = Set(incomingLines.joined(separator: " ").lowercased().components(separatedBy: .whitespacesAndNewlines))
-        let overlapRatio = Double(existingTokens.intersection(incomingTokens).count) / Double(max(1, incomingTokens.count))
-        if overlapRatio < 0.12 && incomingLines.count > 6 {
+        let existing = Set(accumulatedProblemLines.joined(separator: " ").lowercased().components(separatedBy: .whitespacesAndNewlines))
+        let incoming = Set(incomingLines.joined(separator: " ").lowercased().components(separatedBy: .whitespacesAndNewlines))
+        let ratio = Double(existing.intersection(incoming).count) / Double(max(1, incoming.count))
+        if ratio < 0.12 && incomingLines.count > 6 {
             print("🔄 Divergence detected: Fresh problem statement loaded. Flushing buffer.")
-            accumulatedProblemLines = incomingLines
-            return incomingLines.joined(separator: "\n")
+            accumulatedProblemLines = incomingLines; return incomingLines.joined(separator: "\n")
         }
 
         let maxMatch = min(accumulatedProblemLines.count, incomingLines.count, 10)
@@ -491,7 +523,6 @@ class SpatialOCRManager {
             let inc = incomingLines.prefix(count).map { $0.trimmingCharacters(in: .whitespaces) }
             if Array(buf) == Array(inc) { matchCount = count; break }
         }
-
         accumulatedProblemLines.append(contentsOf: incomingLines.dropFirst(matchCount))
         return accumulatedProblemLines.joined(separator: "\n")
     }
@@ -534,30 +565,6 @@ class GeminiRESTClient {
         return try await executeGeminiRequest(prompt: prompt, apiKey: apiKey)
     }
 
-    func requestPatch(previousCode: String, consoleDiagnostics: String, problemContext: String) async throws -> String {
-        guard let apiKey = resolveAPIKey() else {
-            throw NSError(domain: "SpatialVision", code: 401, userInfo: [NSLocalizedDescriptionKey: "GEMINI_API_KEY missing"])
-        }
-        let prompt = """
-        You are an autonomous algorithmic code debugger in a live assessment environment.
-        PROBLEM CONTEXT:
-        \(problemContext)
-        ORIGINALLY GENERATED CODE:
-        \(previousCode)
-        CURRENT CODE IN EDITOR & TEST CONSOLE OUTPUT:
-        \(consoleDiagnostics)
-        TASK:
-        1. Carefully inspect the candidate's CURRENT CODE visible in the editor against the test console failure or traceback.
-        2. Diagnose the exact defect (e.g. edge-case failure, off-by-one error, wrong variable modification, or timeout).
-        3. Preserve the candidate's existing implementation logic, variable names, and code structure intact. Fix ONLY the flawed logic or defective lines.
-        4. Provide the complete corrected replacement code body for the function so that overwriting the existing function body produces a working, passing solution.
-        5. Return ONLY the raw executable code body with zero markdown backticks (```), no signature re-declarations, and no conversational prose.
-        6. For indented languages (especially Python), prefix code with 4-space base indentation for line 0 and all subsequent lines.
-        """
-        return try await executeGeminiRequest(prompt: prompt, apiKey: apiKey)
-    }
-
-    // Cascading multi-model failover shield against HTTP 429 quota exhaustion
     private func executeGeminiRequest(prompt: String, apiKey: String) async throws -> String {
         let models = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.6-flash"]
         var lastError: Error? = nil
@@ -565,14 +572,8 @@ class GeminiRESTClient {
         for model in models {
             guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)") else { continue }
             var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.timeoutInterval = 15.0
-
-            let body: [String: Any] = [
-                "contents": [["parts": [["text": prompt]]]],
-                "generationConfig": ["temperature": 0.1, "maxOutputTokens": 4096]
-            ]
+            request.httpMethod = "POST"; request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.timeoutInterval = 15.0
+            let body: [String: Any] = ["contents": [["parts": [["text": prompt]]]], "generationConfig": ["temperature": 0.1, "maxOutputTokens": 4096]]
 
             do {
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -582,28 +583,23 @@ class GeminiRESTClient {
                 if httpResp.statusCode == 200 {
                     guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                           let candidates = json["candidates"] as? [[String: Any]],
-                          let first = candidates.first,
-                          let content = first["content"] as? [String: Any],
+                          let content = candidates.first?["content"] as? [String: Any],
                           let parts = content["parts"] as? [[String: Any]],
                           let text = parts.first?["text"] as? String else {
-                        throw NSError(domain: "SpatialVision", code: 502, userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response from \(model)"])
+                        throw NSError(domain: "SpatialVision", code: 502, userInfo: [NSLocalizedDescriptionKey: "Parse failure on \(model)"])
                     }
                     return sanitizeGeneratedCode(text)
                 } else if httpResp.statusCode == 429 || httpResp.statusCode == 404 {
-                    print("⚠️ Gemini model '\(model)' returned HTTP \(httpResp.statusCode). Failing over to next available model...")
+                    print("⚠️ Gemini model '\(model)' returned HTTP \(httpResp.statusCode). Failing over to next model...")
                     let errBody = String(data: data, encoding: .utf8) ?? "Quota exceeded"
                     lastError = NSError(domain: "SpatialVision", code: httpResp.statusCode, userInfo: [NSLocalizedDescriptionKey: "Gemini HTTP error (\(model)): \(errBody)"])
-                    continue
                 } else {
                     let errBody = String(data: data, encoding: .utf8) ?? "Unknown error"
                     throw NSError(domain: "SpatialVision", code: httpResp.statusCode, userInfo: [NSLocalizedDescriptionKey: "Gemini HTTP error (\(model)): \(errBody)"])
                 }
-            } catch {
-                lastError = error
-                continue
-            }
+            } catch { lastError = error }
         }
-        throw lastError ?? NSError(domain: "SpatialVision", code: 500, userInfo: [NSLocalizedDescriptionKey: "All Gemini model endpoints exhausted."])
+        throw lastError ?? NSError(domain: "SpatialVision", code: 500, userInfo: [NSLocalizedDescriptionKey: "All Gemini models exhausted."])
     }
 
     private func sanitizeGeneratedCode(_ raw: String) -> String {
@@ -620,11 +616,7 @@ class GeminiRESTClient {
 class AppDelegate: NSObject, NSApplicationDelegate {
     var panel: PillPanel!
     var pillView: PillContentView!
-    var lastProblemText = ""
-    var lastGeneratedCode = ""
-    var lastStarterCode = ""
-    var stagedPatch: String? = nil
-    private var consoleWatcherTask: Task<Void, Never>? = nil
+    var lastProblemText = "", lastGeneratedCode = "", lastStarterCode = ""
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -650,18 +642,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let opt = UInt32(optionKey)
         let binds: [(UInt32, Int)] = [
-            (1, kVK_ANSI_S), // Opt + S: Solve & Inject
-            (2, kVK_ANSI_T), // Opt + T: Diagnose & Staged Patch
-            (3, kVK_ANSI_R), // Opt + R: Reset State & Buffer
-            (4, kVK_ANSI_X), // Opt + X: Panic Abort
-            (5, kVK_ANSI_Q)  // Opt + Q: Clean Quit
+            (1, kVK_ANSI_S),
+            (2, kVK_ANSI_R),
+            (3, kVK_ANSI_X),
+            (4, kVK_ANSI_Q)
         ]
         for (id, code) in binds {
             var ref: EventHotKeyRef?
             RegisterEventHotKey(UInt32(code), opt, EventHotKeyID(signature: OSType(0x5356), id: id), GetApplicationEventTarget(), 0, &ref)
         }
 
-        // Dead-key chord swallow matrix
         let swallow = [0, 11, 8, 2, 14, 3, 5, 4, 34, 38, 40, 37, 46, 45, 31, 35, 32, 9, 13, 16, 6, 23, 22, 26, 28, 25, 29, 41, 44, 39, 43, 47, 50, 42]
         for c in swallow {
             var ref: EventHotKeyRef?
@@ -672,69 +662,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func handleHotkey(_ id: UInt32) {
         switch id {
         case 1: triggerSolvePipeline()
-        case 2: triggerPatchPipeline()
-        case 3: resetAll()
-        case 4: panicAbort()
-        case 5: exit(0)
+        case 2: resetAll()
+        case 3: panicAbort()
+        case 4: exit(0)
         default: break
-        }
-    }
-
-    func cancelConsoleWatcher() {
-        consoleWatcherTask?.cancel()
-        consoleWatcherTask = nil
-    }
-
-    @MainActor
-    func updateWatcherState(_ state: PillState) {
-        guard !Task.isCancelled else { return }
-        pillView.applyState(state)
-    }
-
-    func startConsoleWatcher() {
-        cancelConsoleWatcher()
-        consoleWatcherTask = Task { [weak self] in
-            print("👀 Autonomous Console Watcher active: polling every 1.5s for test results...")
-            while !Task.isCancelled {
-                do { try await Task.sleep(nanoseconds: 1_500_000_000) } catch { break }
-                if Task.isCancelled { break }
-                guard let split = await SpatialOCRManager.shared.captureSplitScreen() else { continue }
-                if Task.isCancelled { break }
-
-                let consoleText = split.editorText.lowercased()
-                let failureIndicators = ["compilation error", "wrong answer", "runtime error", "terminated due to timeout", "time limit exceeded", "traceback (most recent call last)"]
-                let successIndicators = ["congratulations", "test case 0: passed", "test case 1: passed", "all test cases passed", "success"]
-
-                if failureIndicators.contains(where: { consoleText.contains($0) }) {
-                    print("⚠️ Console Watcher: Detected test failure. Updating HUD to 'TESTS FAILED [Opt+T]'")
-                    await self?.updateWatcherState(.error("TESTS FAILED [Opt+T]"))
-                    break
-                } else if successIndicators.contains(where: { consoleText.contains($0) }) {
-                    print("🚀 Console Watcher: All test cases passed! Updating HUD to 'ALL PASSED'")
-                    await self?.updateWatcherState(.awaitingSubmit)
-                    break
-                }
-            }
         }
     }
 
     func handleProgressState(_ state: PillState) {
         pillView.applyState(state)
-        if case .awaitingRun = state { startConsoleWatcher() }
     }
 
     func triggerSolvePipeline() {
-        stagedPatch = nil
-        cancelConsoleWatcher()
         pillView.applyState(.analyzing)
         Task { [weak self] in
             guard let self = self else { return }
             guard let split = await SpatialOCRManager.shared.captureSplitScreen() else {
-                await MainActor.run { self.pillView.applyState(.error("OCR FAILED")) }
-                return
+                await MainActor.run { self.pillView.applyState(.error("OCR FAILED")) }; return
             }
-            self.lastProblemText = split.problemText
-            self.lastStarterCode = split.editorText
+            self.lastProblemText = split.problemText; self.lastStarterCode = split.editorText
             print("⚡ Problem Analyzed (\(split.problemText.count) chars). Calling Gemini REST...")
 
             do {
@@ -755,66 +701,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func triggerPatchPipeline() {
-        if let patch = stagedPatch {
-            print("🚀 Staged patch detected. Candidate confirmed editor focus. Typing patch...")
-            stagedPatch = nil
-            pillView.applyState(.typing)
-            BiometricTyper.shared.typeCode(patch, starterCode: lastStarterCode) { [weak self] state in
-                self?.handleProgressState(state)
-            }
-            return
-        }
-
-        if case .evaluating = pillView.currentState {
-            print("⚠️ Evaluation already in progress. Please wait...")
-            return
-        }
-
-        cancelConsoleWatcher()
-        pillView.applyState(.evaluating)
-        Task { [weak self] in
-            guard let self = self else { return }
-            guard let split = await SpatialOCRManager.shared.captureSplitScreen() else {
-                await MainActor.run { self.pillView.applyState(.error("OCR FAILED")) }
-                return
-            }
-            self.lastStarterCode = split.editorText
-            print("⚠️ Diagnosing Test Failure Console Drawer (\(split.editorText.count) chars)...")
-
-            do {
-                let patch = try await GeminiRESTClient.shared.requestPatch(
-                    previousCode: self.lastGeneratedCode,
-                    consoleDiagnostics: split.editorText,
-                    problemContext: self.lastProblemText
-                )
-                self.lastGeneratedCode = patch
-                self.stagedPatch = patch
-                print("🛠️ In-Place Patch Synthesized (\(patch.count) chars). Ready for injection.")
-                print("👉 Highlight the old function in editor (or clear it), then press Opt+T to overwrite cleanly.")
-                await MainActor.run { self.pillView.applyState(.readyToInject) }
-            } catch {
-                print("❌ Patch Error: \(error.localizedDescription)")
-                await MainActor.run { self.pillView.applyState(.error("PATCH ERROR")) }
-            }
-        }
-    }
-
     func resetAll() {
-        stagedPatch = nil
-        cancelConsoleWatcher()
         BiometricTyper.shared.cancel()
         SpatialOCRManager.shared.reset()
-        lastProblemText = ""
-        lastGeneratedCode = ""
-        lastStarterCode = ""
+        lastProblemText = ""; lastGeneratedCode = ""; lastStarterCode = ""
         pillView.applyState(.idle)
         print("🔄 SpatialVision State & Buffers Reset to IDLE.")
     }
 
     func panicAbort() {
-        stagedPatch = nil
-        cancelConsoleWatcher()
         BiometricTyper.shared.cancel()
         pillView.applyState(.idle)
         print("🛑 PANIC ABORT TRIGGERED: Typing halted instantly.")
