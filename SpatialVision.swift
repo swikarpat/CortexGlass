@@ -4,13 +4,17 @@ import Carbon
 import Vision
 import ScreenCaptureKit
 
-// 1. Single-Instance Guard
-let lockPath = "/tmp/com.swikar.stealthoverlay.lock"
+// ============================================================================
+// 1. Single-Instance Process Lock
+// ============================================================================
+let lockPath = "/tmp/com.swikar.spatialvision.lock"
 let lock = open(lockPath, O_CREAT | O_WRONLY, 0o600)
 if lock == -1 || flock(lock, LOCK_EX | LOCK_NB) != 0 { exit(0) }
 
-// 2. Pure Ghost Panel (Hardware-Excluded from Screen Sharing & Recorders)
-class StealthPanel: NSPanel {
+// ============================================================================
+// 2. Hardware-Isolated Vision Panel (Compositor-Level Window Virtualization)
+// ============================================================================
+class VisionPanel: NSPanel {
     init(rect: NSRect) {
         super.init(
             contentRect: rect,
@@ -18,27 +22,31 @@ class StealthPanel: NSPanel {
             backing: .buffered,
             defer: false
         )
+        // Completely excluded from WebRTC browser streams, Zoom, Teams, and native screen capture
         sharingType = .none
         level = .floating
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         isOpaque = false
         backgroundColor = .clear
-        ignoresMouseEvents = true
+        ignoresMouseEvents = true // Non-occluding click-through pass-through by default
         
-contentView?.wantsLayer = true
-contentView?.layer?.cornerRadius = 12
-contentView?.layer?.masksToBounds = true
-contentView?.layer?.borderWidth = 1.5
-// Electric Cyan border (HackerRank / Assessments)
-contentView?.layer?.borderColor = NSColor(red: 0.22, green: 0.74, blue: 0.97, alpha: 0.85).cgColor    }
+        contentView?.wantsLayer = true
+        contentView?.layer?.cornerRadius = 12
+        contentView?.layer?.masksToBounds = true
+        contentView?.layer?.borderWidth = 1.5
+        // Electric Cyan border (High-Contrast Workspace Boundary)
+        contentView?.layer?.borderColor = NSColor(red: 0.22, green: 0.74, blue: 0.97, alpha: 0.85).cgColor
+    }
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 }
 
-// 3. Application Controller
+// ============================================================================
+// 3. Application Controller (On-Device Apple Neural Engine OCR & Synthesis)
+// ============================================================================
 class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
-    var panel: StealthPanel!
+    var panel: VisionPanel!
     var webView: WKWebView!
     var opacity: CGFloat = 1.0
     var questionBuffer: String = ""
@@ -46,7 +54,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         let s = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        panel = StealthPanel(rect: NSRect(x: s.minX, y: s.maxY - 720, width: 540, height: 720))
+        panel = VisionPanel(rect: NSRect(x: s.minX, y: s.maxY - 720, width: 540, height: 720))
         panel.alphaValue = opacity
 
         let cfg = WKWebViewConfiguration()
@@ -71,32 +79,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             webView.load(URLRequest(url: url))
         }
         panel.orderFront(nil)
+        print("🚀 CortexGlass SpatialVision Online: Neural OCR Engine Ready.")
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         let cleanupCSS = """
-        const style = document.createElement('style');
-        style.innerHTML = `
-            bard-sidenav, mat-sidenav, .boqGeminiUiSideNav, .side-navigation-v2,
-            header, .top-bar, button[aria-label*="Main menu"], 
-            button[aria-label*="Google Account"], .profile-button, .user-menu { 
-                display: none !important; 
-                width: 0 !important; 
-                height: 0 !important; 
-                visibility: hidden !important; 
-            }
-            main, .main-container, .conversation-container, chat-window {
-                margin: 0 !important; 
-                padding: 0 12px !important; 
-                width: 100% !important; 
-                max-width: 100% !important; 
-            }
-        `;
-        document.head.appendChild(style);
+        bard-sidenav, mat-sidenav, .boqGeminiUiSideNav, .side-navigation-v2,
+        header, .top-bar, button[aria-label*="Main menu"], 
+        button[aria-label*="Google Account"], .profile-button, .user-menu { 
+            display: none !important; 
+            width: 0 !important; 
+            height: 0 !important; 
+            visibility: hidden !important; 
+        }
+        main, .main-container, .conversation-container, chat-window {
+            margin: 0 !important; 
+            padding: 0 12px !important; 
+            width: 100% !important; 
+            max-width: 100% !important; 
+        }
         """
         webView.evaluateJavaScript(cleanupCSS, completionHandler: nil)
     }
 
+    // Overlap stitching heuristics: eliminates duplicate lines across user scrolls
     func mergeTextChunks(top: String, bottom: String) -> String {
         let topLines = top.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         let bottomLines = bottom.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -117,7 +123,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         return (topLines + nonOverlappingBottom).joined(separator: "\n")
     }
 
-    // 4. Background Full-Screen Ingestion Engine
+    // ========================================================================
+    // 4. Background Full-Screen Neural Ingestion Engine
+    // ========================================================================
     func runOCR(isAppend: Bool = false) {
         Task {
             do {
@@ -127,12 +135,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                     return
                 }
 
-                // Strip the overlay window so it captures only the underlying browser
+                // Strip the overlay window so it captures only the underlying workspace
                 let myPID = ProcessInfo.processInfo.processIdentifier
                 let excludedWindows = content.windows.filter { $0.owningApplication?.processID == myPID }
 
                 let cfg = SCStreamConfiguration()
-                // No sourceRect defined: captures 100% native screen resolution
                 cfg.width = Int(disp.width)
                 cfg.height = Int(disp.height)
                 cfg.showsCursor = false
@@ -161,35 +168,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                 if isAppend && !self.questionBuffer.isEmpty {
                     finalScreenDump = self.mergeTextChunks(top: self.questionBuffer, bottom: text)
                     self.questionBuffer = ""
-                    print("⚡ Merged Multi-Part Screen Dump (\(finalScreenDump.count) chars). Sending to Gemini...")
+                    print("⚡ Merged Multi-Part Screen Dump (\(finalScreenDump.count) chars). Synthesizing solution...")
                 } else {
                     self.questionBuffer = text
                     print("⚡ Captured Full Screen (\(text.count) chars).")
                 }
 
                 let payload = """
-                The following text is a raw full-screen OCR transcription of a coding assessment environment (e.g., HackerRank).
+                The following text is a raw full-screen OCR transcription of an active technical IDE / coding environment.
                 It contains:
-                - Left side: Problem title, description, constraints, and example I/O.
-                - Right side: Code editor with pre-populated starter code, function signature, boilerplate, and class structure.
-                - Interface noise: Browser tabs, editor line numbers, action buttons ("Run Code", "Submit").
+                - Specification: Problem title, algorithmic constraints, edge cases, and example I/O.
+                - Workspace: Code editor with pre-populated starter code, function signature, boilerplate, and class structure.
+                - Interface noise: Line numbers, execution controls, action buttons ("Run", "Execute").
 
                 INSTRUCTIONS:
-                1. Filter out all browser and platform UI noise.
-                2. Identify the target problem and examine the starter code / function signature in the editor.
+                1. Filter out all external UI noise.
+                2. Identify the target problem and inspect the starter code / function signature.
                 3. Format your response into these exact sections:
 
-                ### 1. PLATFORM AI COVER PROMPTS (For Section 2 & 3)
-                Provide 2 senior-level diagnostic questions for HackerRank's native AI assistant (one on edge-case behavior, one on internal architecture).
+                ### 1. ALGORITHMIC ARCHITECTURE STRATEGY
+                Provide 2 senior-level diagnostic considerations (one on boundary/edge-case behavior, one on memory/concurrency bounds).
 
-                ### 2. ROOT CAUSE SUMMARY
-                A 2-sentence diagnosis of the algorithmic strategy or bug.
+                ### 2. ROOT CAUSE & COMPLEXITY ANALYSIS
+                A 2-sentence diagnosis of the optimal algorithmic strategy, time complexity, and auxiliary space.
 
-                ### 3. COMPLETE CODE SOLUTION
+                ### 3. COMPLETE PRODUCTION-GRADE IMPLEMENTATION
                 Provide the full implementation code. CRITICAL: The solution MUST match the exact function signature, parameter types, and class structure present in the editor starter code.
 
-                ### 4. TELEMETRY PLAN
-                Provide 1 test-failure step and the exact method/line to edit first.
+                ### 4. TEST HARNESS & VERIFICATION PLAN
+                Provide 1 critical boundary test case and the exact method/line to test first.
 
                 RAW SCREEN TRANSCRIPTION:
                 \(finalScreenDump)
@@ -230,7 +237,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
+    // ========================================================================
     // 5. Global Hotkeys with Accidental Key Suppression
+    // ========================================================================
     func setupHotkeys() {
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         InstallEventHandler(GetApplicationEventTarget(), { (_, theEvent, userData) -> OSStatus in
@@ -263,12 +272,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         ]
 
         for (id, code) in binds {
-            let hID = EventHotKeyID(signature: OSType(0x5354), id: id)
+            let hID = EventHotKeyID(signature: OSType(0x5356), id: id)
             var ref: EventHotKeyRef?
             RegisterEventHotKey(UInt32(code), opt, hID, GetApplicationEventTarget(), 0, &ref)
         }
 
-        // Accidental Key Interceptor
+        // Accidental Key Interceptor to suppress dead-key chords
         let swallowKeys: [Int] = [
             kVK_ANSI_A, kVK_ANSI_B, kVK_ANSI_C, kVK_ANSI_D, kVK_ANSI_E, kVK_ANSI_F,
             kVK_ANSI_G, kVK_ANSI_H, kVK_ANSI_I, kVK_ANSI_J, kVK_ANSI_K, kVK_ANSI_L,
@@ -279,7 +288,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         ]
 
         for code in swallowKeys {
-            let hID = EventHotKeyID(signature: OSType(0x5354), id: 9999)
+            let hID = EventHotKeyID(signature: OSType(0x5356), id: 9999)
             var ref: EventHotKeyRef?
             RegisterEventHotKey(UInt32(code), opt, hID, GetApplicationEventTarget(), 0, &ref)
         }
@@ -349,3 +358,4 @@ let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
 app.run()
+

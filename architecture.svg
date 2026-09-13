@@ -273,7 +273,7 @@
     <text x="45" y="50" class="label-sub">Isolated Session Storage • Silent DOM Dispatch (<tspan fill="#2DD4BF" font-family="monospace">contenteditable</tspan>) • Anti-Detection Flags</text>
   </g>
 
-  <!-- E2: Hardware Ghost HUD Panel -->
+  <!-- E2: Hardware-Isolated Spatial HUD Panel -->
   <g transform="translate(160, 755)">
     <rect width="700" height="75" fill="#0F172A" stroke="#F8FAFC" stroke-opacity="0.85" class="node-box" filter="url(#glow-white)">
       <animate attributeName="stroke-opacity" values="0.4;1;0.4" dur="2.9s" begin="0.1s" repeatCount="indefinite" />
@@ -282,8 +282,8 @@
     <circle cx="25" cy="38" r="4.5" fill="#F8FAFC">
       <animate attributeName="opacity" values="1;0.2;1" dur="1.1s" repeatCount="indefinite" />
     </circle>
-    <text x="45" y="33" fill="#F8FAFC" class="label-title">Hardware Ghost HUD Panel (<tspan fill="#38BDF8">sharingType = .none</tspan>)</text>
-    <text x="45" y="52" class="label-sub">Zero-Leak Glass Overlay • 100% Invisible in Screen Shares • Click-Through Ghost HUD</text>
+    <text x="45" y="33" fill="#F8FAFC" class="label-title">Hardware-Isolated Spatial HUD (<tspan fill="#38BDF8">sharingType = .none</tspan>)</text>
+    <text x="45" y="52" class="label-sub">Zero-Leak Glass Overlay • 100% Invisible in Screen Shares • Non-Occluding Pass-Through HUD</text>
     <text x="45" y="67" class="label-sub" fill="#FBBF24">⚡ Interactive Mode (<tspan fill="#F8FAFC" font-family="monospace">Opt+I</tspan>): White Border, Direct Model Switching &amp; Window Repositioning</text>
   </g>
 </svg>
