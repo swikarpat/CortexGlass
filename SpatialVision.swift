@@ -16,61 +16,27 @@ if lock == -1 || flock(lock, LOCK_EX | LOCK_NB) != 0 { exit(0) }
 // 2. State Machine Definition
 // ============================================================================
 enum PillState {
-    case idle
-    case analyzing
-    case typing
-    case awaitingRun
-    case evaluating
-    case awaitingSubmit
-    case error(String)
+    case idle, analyzing, preparing, typing, awaitingRun, evaluating, readyToInject, awaitingSubmit, error(String)
 
-    var badgeText: String {
+    private var meta: (badge: String, sub: String, icon: String, color: NSColor) {
         switch self {
-        case .idle:           return "READY"
-        case .analyzing:      return "ANALYZING"
-        case .typing:         return "TYPING..."
-        case .awaitingRun:    return "RUN TESTS NOW"
-        case .evaluating:     return "EVALUATING"
-        case .awaitingSubmit: return "ALL PASSED"
-        case .error(let msg): return msg
+        case .idle:           return ("READY", "[Opt+S to Solve]", "●", NSColor(white: 0.45, alpha: 0.85))
+        case .analyzing:      return ("ANALYZING", "[Vision OCR + LLM]", "⚡", NSColor(red: 0.98, green: 0.65, blue: 0.12, alpha: 0.95))
+        case .preparing:      return ("PREPARING...", "[Deliberating 4s...]", "🤔", NSColor(red: 0.98, green: 0.65, blue: 0.12, alpha: 0.95))
+        case .typing:         return ("TYPING...", "[DO NOT TOUCH KB/MOUSE]", "⌨️", NSColor(red: 0.15, green: 0.78, blue: 0.98, alpha: 0.95))
+        case .awaitingRun:    return ("RUN TESTS NOW", "[Click 'Run Code' in Browser]", "👉", NSColor(red: 0.10, green: 0.88, blue: 0.45, alpha: 1.0))
+        case .evaluating:     return ("EVALUATING", "[Diagnosing Console Drawer]", "⚠️", NSColor(red: 0.95, green: 0.25, blue: 0.35, alpha: 0.95))
+        case .readyToInject:  return ("INJECT PATCH", "[Select old code & Opt+T]", "👉", NSColor(red: 0.15, green: 0.85, blue: 0.95, alpha: 1.0))
+        case .awaitingSubmit: return ("ALL PASSED", "[Ready to Click Submit]", "🚀", NSColor(red: 0.05, green: 0.95, blue: 0.40, alpha: 1.0))
+        case .error(let msg):
+            let sub = msg.contains("Opt+T") ? "[Opt+T to Diagnose & Patch]" : "[Opt+R to Reset]"
+            return (msg, sub, "❌", NSColor(red: 0.95, green: 0.15, blue: 0.15, alpha: 1.0))
         }
     }
-
-    var subText: String {
-        switch self {
-        case .idle:           return "[Opt+S to Solve]"
-        case .analyzing:      return "[Vision OCR + LLM]"
-        case .typing:         return "[DO NOT TOUCH KB/MOUSE]"
-        case .awaitingRun:    return "[Click 'Run Code' in Browser]"
-        case .evaluating:     return "[Diagnosing Console Drawer]"
-        case .awaitingSubmit: return "[Ready to Click Submit]"
-        case .error:          return "[Opt+R to Reset]"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .idle:           return "●"
-        case .analyzing:      return "⚡"
-        case .typing:         return "⌨️"
-        case .awaitingRun:    return "👉"
-        case .evaluating:     return "⚠️"
-        case .awaitingSubmit: return "🚀"
-        case .error:          return "❌"
-        }
-    }
-
-    var borderColor: NSColor {
-        switch self {
-        case .idle:           return NSColor(white: 0.45, alpha: 0.85)
-        case .analyzing:      return NSColor(red: 0.98, green: 0.65, blue: 0.12, alpha: 0.95) // Amber
-        case .typing:         return NSColor(red: 0.15, green: 0.78, blue: 0.98, alpha: 0.95) // Electric Cyan
-        case .awaitingRun:    return NSColor(red: 0.10, green: 0.88, blue: 0.45, alpha: 1.0)  // Flashing Emerald
-        case .evaluating:     return NSColor(red: 0.95, green: 0.25, blue: 0.35, alpha: 0.95) // Rose Red
-        case .awaitingSubmit: return NSColor(red: 0.05, green: 0.95, blue: 0.40, alpha: 1.0)  // Solid Vibrant Green
-        case .error:          return NSColor(red: 0.95, green: 0.15, blue: 0.15, alpha: 1.0)
-        }
-    }
+    var badgeText: String { meta.badge }
+    var subText: String { meta.sub }
+    var icon: String { meta.icon }
+    var borderColor: NSColor { meta.color }
 }
 
 // ============================================================================
@@ -91,29 +57,26 @@ class PillContentView: NSView {
         layer?.masksToBounds = true
         layer?.borderWidth = 1.8
         layer?.backgroundColor = NSColor(red: 0.06, green: 0.08, blue: 0.12, alpha: 0.92).cgColor
-        
-        setupLabels()
-        applyState(.idle)
-    }
 
-    required init?(coder: NSCoder) { fatalError() }
-
-    private func setupLabels() {
-        iconLabel.font = NSFont.systemFont(ofSize: 13, weight: .bold)
+        iconLabel.font = .systemFont(ofSize: 13, weight: .bold)
         iconLabel.alignment = .center
         iconLabel.frame = NSRect(x: 10, y: 11, width: 22, height: 20)
         addSubview(iconLabel)
 
-        titleLabel.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .heavy)
+        titleLabel.font = .monospacedSystemFont(ofSize: 11, weight: .heavy)
         titleLabel.textColor = .white
         titleLabel.frame = NSRect(x: 34, y: 20, width: 220, height: 16)
         addSubview(titleLabel)
 
-        hintLabel.font = NSFont.monospacedSystemFont(ofSize: 9.5, weight: .medium)
+        hintLabel.font = .monospacedSystemFont(ofSize: 9.5, weight: .medium)
         hintLabel.textColor = NSColor(white: 0.72, alpha: 0.9)
         hintLabel.frame = NSRect(x: 34, y: 6, width: 220, height: 14)
         addSubview(hintLabel)
+
+        applyState(.idle)
     }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     func applyState(_ state: PillState) {
         currentState = state
@@ -126,41 +89,35 @@ class PillContentView: NSView {
         hintLabel.stringValue = state.subText
         layer?.borderColor = state.borderColor.cgColor
 
-        if case .awaitingRun = state {
-            // Flashing emerald border animation
+        switch state {
+        case .awaitingRun, .readyToInject:
             flashTimer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: true) { [weak self] _ in
                 guard let self = self else { return }
                 self.isFlashVisible.toggle()
                 self.layer?.borderColor = self.isFlashVisible ? state.borderColor.cgColor : NSColor.clear.cgColor
             }
+        default: break
         }
     }
 }
 
 class PillPanel: NSPanel {
     init(rect: NSRect) {
-        super.init(
-            contentRect: rect,
-            styleMask: [.nonactivatingPanel, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        // Compositor-level isolation: mathematically stripped from WebRTC, Zoom, Teams, and browser hooks
-        sharingType = .none
+        super.init(contentRect: rect, styleMask: [.nonactivatingPanel, .fullSizeContentView], backing: .buffered, defer: false)
+        sharingType = .none // Mathematically stripped from WebRTC, Zoom, Teams, and browser hooks
         level = .floating
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         isOpaque = false
         backgroundColor = .clear
-        ignoresMouseEvents = true // Zero mouse interference with active browser
+        ignoresMouseEvents = true
         hasShadow = false
     }
-
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 }
 
 // ============================================================================
-// 4. Biometric Human-Jitter Typing Engine
+// 4. Biometric Human-Jitter Typing Engine (18-22 WPM with Anti-Telemetry Shield)
 // ============================================================================
 class BiometricTyper {
     static let shared = BiometricTyper()
@@ -169,197 +126,182 @@ class BiometricTyper {
     private let workQueue = DispatchQueue(label: "com.swikar.spatialvision.typer.q", qos: .userInteractive)
 
     var isCancelled: Bool {
-        get {
-            lock.lock()
-            defer { lock.unlock() }
-            return _isCancelled
-        }
-        set {
-            lock.lock()
-            _isCancelled = newValue
-            lock.unlock()
-        }
+        get { lock.lock(); defer { lock.unlock() }; return _isCancelled }
+        set { lock.lock(); _isCancelled = newValue; lock.unlock() }
     }
 
-    func cancel() {
-        isCancelled = true
-    }
+    func cancel() { isCancelled = true }
 
-    // High-resolution interruptible sleep that checks cancellation every 15ms
-    // Guarantees <15ms abort latency upon Option + X panic abort
-    @discardableResult
+    // Sliced sleep in 15ms increments for sub-15ms cancellation latency
     private func interruptibleSleep(microseconds: useconds_t) -> Bool {
         var remaining = microseconds
-        let chunk: useconds_t = 15_000
+        let step: useconds_t = 15_000
         while remaining > 0 {
             if isCancelled { return false }
-            let sleepTime = min(remaining, chunk)
+            let sleepTime = min(remaining, step)
             usleep(sleepTime)
             remaining -= sleepTime
         }
         return !isCancelled
     }
 
-    // Thread-safe UI state dispatch helper ensuring AppKit main-thread execution
     private func notifyProgress(_ state: PillState, callback: @escaping (PillState) -> Void) {
-        DispatchQueue.main.async {
-            callback(state)
-        }
+        DispatchQueue.main.async { callback(state) }
     }
 
-    // Box-Muller Gaussian Inter-Keystroke Interval (µ = 65ms, σ = 25ms, clamped [30, 145]ms)
+    // Box-Muller Gaussian Inter-Keystroke Interval (µ = 290ms, σ = 75ms, clamped [150, 480]ms) -> ~20 WPM baseline
     private func sampleGaussianIKI() -> useconds_t {
-        let u1 = max(1e-6, Double.random(in: 0.0...1.0))
-        let u2 = Double.random(in: 0.0...1.0)
+        let u1 = max(1e-6, Double.random(in: 0.0...1.0)), u2 = Double.random(in: 0.0...1.0)
         let z = sqrt(-2.0 * log(u1)) * cos(2.0 * .pi * u2)
-        let val = 65.0 + z * 25.0
-        let clamped = max(30.0, min(145.0, val))
-        return useconds_t(clamped * 1000.0)
+        let val = max(150.0, min(480.0, 290.0 + z * 75.0))
+        return useconds_t(val * 1000.0)
     }
 
-    // Cognitive hesitation pause at semantic syntax boundaries (450ms - 950ms)
     private func isSyntaxBoundary(prev: Character?, current: Character) -> Bool {
         guard let p = prev else { return false }
-        if p == ":" || p == "{" || p == ";" { return true }
-        return false
+        return p == ":" || p == "{" || p == ";"
     }
 
-    // Adjacent keyboard key map for simulated typo generation
     private func adjacentTypoKey(for c: Character) -> Character {
-        let qwertyAdj: [Character: String] = [
-            "a": "sqwz", "b": "vngh", "c": "xdfv", "d": "serfcx", "e": "wsdr",
-            "f": "drtgvc", "g": "ftyhbv", "h": "gyujnb", "i": "ujko", "j": "huikmn",
-            "k": "jiolm", "l": "kop", "m": "njk", "n": "bhjm", "o": "iklp",
-            "p": "ol", "q": "wa", "r": "edft", "s": "awedxz", "t": "rfgy",
-            "u": "yhji", "v": "cfgb", "w": "qase", "x": "zsdc", "y": "tghu", "z": "asx"
+        let adj: [Character: String] = [
+            "a": "sqw", "b": "vng", "c": "xdf", "d": "serf", "e": "wsdr", "f": "drtg", "g": "ftyh", "h": "gyuj",
+            "i": "ujko", "j": "huik", "k": "jiol", "l": "kop", "m": "njk", "n": "bhjm", "o": "iklp", "p": "ol",
+            "q": "wa", "r": "edft", "s": "awed", "t": "rfgy", "u": "yhji", "v": "cfgb", "w": "qase", "x": "zsdc",
+            "y": "tghu", "z": "asx"
         ]
-        let lower = Character(c.lowercased())
-        if let adj = qwertyAdj[lower], let randKey = adj.randomElement() {
-            return c.isUppercase ? Character(randKey.uppercased()) : randKey
-        }
-        return "e"
+        guard let match = adj[Character(c.lowercased())]?.randomElement() else { return "e" }
+        return c.isUppercase ? Character(match.uppercased()) : match
     }
 
-    // Kernel HID Event injection using CGEvent
     private func postUnicodeChar(_ char: Character) {
         var unichars = Array(String(char).utf16)
         guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
               let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else { return }
-
         down.keyboardSetUnicodeString(stringLength: unichars.count, unicodeString: &unichars)
         up.keyboardSetUnicodeString(stringLength: unichars.count, unicodeString: &unichars)
-
         down.post(tap: .cghidEventTap)
-        _ = interruptibleSleep(microseconds: useconds_t(Int.random(in: 12000...22000))) // Natural key hold duration
+        _ = interruptibleSleep(microseconds: useconds_t(Int.random(in: 14000...24000)))
         up.post(tap: .cghidEventTap)
     }
 
     private func postVirtualKey(code: CGKeyCode, flags: CGEventFlags = []) {
         guard let down = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true),
               let up = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: false) else { return }
-
-        if !flags.isEmpty {
-            down.flags = flags
-            up.flags = flags
-        }
-
+        if !flags.isEmpty { down.flags = flags; up.flags = flags }
         down.post(tap: .cghidEventTap)
         _ = interruptibleSleep(microseconds: useconds_t(Int.random(in: 14000...25000)))
         up.post(tap: .cghidEventTap)
     }
 
-    // Select all code in active editor and clear (Cmd + A, Delete)
-    func clearEditor() {
-        if isCancelled { return }
-        postVirtualKey(code: 0, flags: .maskCommand) // Cmd + A (kVK_ANSI_A = 0)
-        if !interruptibleSleep(microseconds: 80_000) { return }
-        postVirtualKey(code: 51) // Delete / Backspace (kVK_Delete = 51)
-        _ = interruptibleSleep(microseconds: 100_000)
+    // Dismisses open Monaco/browser autocomplete suggestions so Return/Tab never get hijacked
+    private func dismissAutocomplete() {
+        postVirtualKey(code: 53) // kVK_Escape = 53
+        _ = interruptibleSleep(microseconds: 25_000)
+    }
+
+    private func countLeadingSpaces(_ line: String) -> Int {
+        line.prefix(while: { $0 == " " || $0 == "\t" }).reduce(0) { $0 + ($1 == "\t" ? 4 : 1) }
+    }
+
+    private func isPythonOrFunctionContext(code: String, starterCode: String) -> Bool {
+        let combined = (starterCode + "\n" + code).lowercased()
+        return combined.contains("def ") || combined.contains("class solution") || combined.contains("):") ||
+               combined.contains("->") || combined.contains("python") || combined.contains("self.") || combined.contains("range(")
     }
 
     // Execute natural typing sequence with Monaco/Ace auto-indentation reconciliation
-    func typeCode(_ code: String, clearBeforeTyping: Bool = false, onProgress: @escaping (PillState) -> Void) {
+    func typeCode(_ code: String, starterCode: String = "", onProgress: @escaping (PillState) -> Void) {
         isCancelled = false
         workQueue.async {
+            // 1. Pre-typing Deliberation Phase: 3.5 to 5.2s authentic thinking window
+            self.notifyProgress(.preparing, callback: onProgress)
+            let deliberation = useconds_t(Double.random(in: 3.5...5.2) * 1_000_000)
+            if !self.interruptibleSleep(microseconds: deliberation) {
+                self.notifyProgress(.idle, callback: onProgress)
+                return
+            }
+
             self.notifyProgress(.typing, callback: onProgress)
 
-            if clearBeforeTyping {
-                self.clearEditor()
-                if self.isCancelled {
-                    self.notifyProgress(.idle, callback: onProgress)
-                    return
+            let isPythonOrFunc = self.isPythonOrFunctionContext(code: code, starterCode: starterCode)
+            var preparedCode = code
+
+            // Safeguard: If target is Python / function definition and first line has 0 indent, promote by 4 spaces
+            if isPythonOrFunc {
+                var codeLines = code.components(separatedBy: "\n")
+                if let firstIdx = codeLines.firstIndex(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+                    let firstLine = codeLines[firstIdx]
+                    if self.countLeadingSpaces(firstLine) == 0 {
+                        let subsequent = codeLines.dropFirst(firstIdx + 1).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                        let hasIndented = subsequent.contains(where: { self.countLeadingSpaces($0) >= 4 })
+                        if hasIndented {
+                            codeLines[firstIdx] = "    " + firstLine
+                        } else {
+                            for i in 0..<codeLines.count where !codeLines[i].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                codeLines[i] = "    " + codeLines[i]
+                            }
+                        }
+                        preparedCode = codeLines.joined(separator: "\n")
+                    }
                 }
             }
 
             var charCount = 0
-            var typoTarget = Int.random(in: 90...130)
+            var typoTarget = Int.random(in: 35...60)
             var prevChar: Character? = nil
-            let lines = code.components(separatedBy: "\n")
+            let lines = preparedCode.components(separatedBy: "\n")
             var expectedEditorIndent = 0
 
             for (lineIdx, line) in lines.enumerated() {
                 if self.isCancelled { break }
 
-                // Measure leading indentation (spaces / tabs)
-                var actualIndent = 0
-                var contentStartIndex = line.startIndex
-                for idx in line.indices {
-                    let ch = line[idx]
-                    if ch == " " {
-                        actualIndent += 1
-                    } else if ch == "\t" {
-                        actualIndent += 4
-                    } else {
-                        contentStartIndex = idx
-                        break
-                    }
+                // Natural Cognitive Freeze ("Glance at Problem"): 25% probability every 2-3 lines (4.5s to 7.0s)
+                if lineIdx > 0 && (lineIdx % 2 == 0 || lineIdx % 3 == 0) && Double.random(in: 0...1) < 0.25 {
+                    let glanceDelay = useconds_t(Double.random(in: 4.5...7.0) * 1_000_000)
+                    if !self.interruptibleSleep(microseconds: glanceDelay) { break }
                 }
 
-                let isAllWhitespace = (contentStartIndex == line.endIndex && actualIndent > 0)
-                let content = isAllWhitespace ? "" : line[contentStartIndex...]
-                let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Newline start hesitation: 600ms to 1200ms pause before typing indentation or content
+                if lineIdx > 0 {
+                    let lineStartPause = useconds_t(Double.random(in: 0.60...1.20) * 1_000_000)
+                    if !self.interruptibleSleep(microseconds: lineStartPause) { break }
+                }
 
-                // Monaco/Ace Collision Reconciliation:
-                // Competitive coding editors auto-indent when Return is pressed after structural tokens ({, :).
-                // In addition, standard code editors preserve existing indentation on Return.
+                // Measure leading indentation
+                let actualIndent = self.countLeadingSpaces(line)
+                let trimmedContent = line.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                // Indentation Reconciliation against Monaco/Ace auto-indent state
                 if trimmedContent.isEmpty {
-                    // Blank or whitespace-only line: do not alter indentation or type spaces.
-                    // Preserve expectedEditorIndent for the next substantive line.
+                    // Blank line: preserve expectedEditorIndent
                 } else if lineIdx == 0 {
-                    // Line 0: Cursor was manually placed or cleared. Type required leading spaces.
-                    for _ in 0..<actualIndent {
+                    var indentToType = actualIndent
+                    if isPythonOrFunc && indentToType == 0 { indentToType = 4 }
+                    for _ in 0..<indentToType {
                         if self.isCancelled { break }
                         self.postUnicodeChar(" ")
                         if !self.interruptibleSleep(microseconds: self.sampleGaussianIKI()) { break }
                     }
                 } else {
-                    // Line 1+: Reconcile against editor's auto-indentation state
-                    if actualIndent == expectedEditorIndent {
-                        // Editor auto-indentation matches target column exactly. Skip leading spaces.
-                    } else if actualIndent > expectedEditorIndent {
-                        // Editor indented, but line requires deeper indentation. Type only delta spaces.
-                        let extraSpaces = actualIndent - expectedEditorIndent
-                        for _ in 0..<extraSpaces {
+                    if actualIndent > expectedEditorIndent {
+                        // Type delta spaces
+                        for _ in 0..<(actualIndent - expectedEditorIndent) {
                             if self.isCancelled { break }
                             self.postUnicodeChar(" ")
                             if !self.interruptibleSleep(microseconds: self.sampleGaussianIKI()) { break }
                         }
-                    } else {
-                        // actualIndent < expectedEditorIndent: Editor indented too far (dedent / unindent)
-                        // Emit Shift + Tab for 4-space indent units, Backspace for remaining spaces
+                    } else if actualIndent < expectedEditorIndent {
+                        // Dedent: dismiss any open autocomplete popover first so Shift+Tab isn't trapped
+                        self.dismissAutocomplete()
                         let excess = expectedEditorIndent - actualIndent
-                        let shiftTabs = excess / 4
-                        let remainingBackspaces = excess % 4
-
-                        for _ in 0..<shiftTabs {
+                        for _ in 0..<(excess / 4) {
                             if self.isCancelled { break }
-                            self.postVirtualKey(code: 48, flags: .maskShift) // Shift + Tab (kVK_Tab = 48)
+                            self.postVirtualKey(code: 48, flags: .maskShift) // Shift + Tab
                             if !self.interruptibleSleep(microseconds: 35_000) { break }
                         }
-
-                        for _ in 0..<remainingBackspaces {
+                        for _ in 0..<(excess % 4) {
                             if self.isCancelled { break }
-                            self.postVirtualKey(code: 51) // Backspace (kVK_Delete = 51)
+                            self.postVirtualKey(code: 51) // Backspace
                             if !self.interruptibleSleep(microseconds: 25_000) { break }
                         }
                     }
@@ -367,52 +309,99 @@ class BiometricTyper {
 
                 if self.isCancelled { break }
 
-                // Type non-whitespace code content with human jitter
-                for char in content {
-                    if self.isCancelled { break }
+                // Cognitive Variable Revision: Every 4 lines, 20% chance of drafting a temporary token, then backspacing
+                if lineIdx > 0 && lineIdx % 4 == 0 && trimmedContent.count > 6 && Double.random(in: 0...1) < 0.20 {
+                    let draftTokens = ["temp", "res", "ans", "val"]
+                    if let draft = draftTokens.randomElement() {
+                        for ch in draft {
+                            if self.isCancelled { break }
+                            self.postUnicodeChar(ch)
+                            _ = self.interruptibleSleep(microseconds: self.sampleGaussianIKI())
+                        }
+                        _ = self.interruptibleSleep(microseconds: useconds_t(Double.random(in: 0.45...0.75) * 1_000_000))
+                        for _ in 0..<draft.count {
+                            if self.isCancelled { break }
+                            self.postVirtualKey(code: 51) // Backspace
+                            _ = self.interruptibleSleep(microseconds: useconds_t(Int.random(in: 90000...130000)))
+                        }
+                        _ = self.interruptibleSleep(microseconds: 250_000)
+                    }
+                }
 
-                    // Cognitive hesitation pause at syntax boundaries
+                // Type non-whitespace code content with human jitter and multi-character typo overruns
+                let chars = Array(trimmedContent)
+                var charIdx = 0
+                while charIdx < chars.count {
+                    if self.isCancelled { break }
+                    let char = chars[charIdx]
+
+                    // Cognitive hesitation pause at syntax boundaries (450ms - 950ms)
                     if self.isSyntaxBoundary(prev: prevChar, current: char) {
                         let hesitation = useconds_t(Double.random(in: 0.45...0.95) * 1_000_000)
                         if !self.interruptibleSleep(microseconds: hesitation) { break }
                     }
 
-                    // Simulated Typo Injection every 90-130 characters
+                    // Multi-Character Typo Overrun Injection (every 35-60 characters)
                     charCount += 1
                     if charCount >= typoTarget && char.isLetter {
                         charCount = 0
-                        typoTarget = Int.random(in: 90...130)
+                        typoTarget = Int.random(in: 35...60)
 
+                        // Type adjacent wrong character
                         let badChar = self.adjacentTypoKey(for: char)
                         self.postUnicodeChar(badChar)
-                        if !self.interruptibleSleep(microseconds: 180_000) { break } // Realization pause
-                        self.postVirtualKey(code: 51) // Backspace
-                        if !self.interruptibleSleep(microseconds: useconds_t(Int.random(in: 80000...130000))) { break }
+                        _ = self.interruptibleSleep(microseconds: self.sampleGaussianIKI())
+
+                        // Reflex Overrun: type 1 upcoming character before the brain realizes the mistake
+                        var overrunCount = 1
+                        if charIdx + 1 < chars.count && chars[charIdx + 1].isLetter {
+                            overrunCount += 1
+                            self.postUnicodeChar(chars[charIdx + 1])
+                            _ = self.interruptibleSleep(microseconds: self.sampleGaussianIKI())
+                        }
+
+                        // Cognitive realization freeze (350ms - 600ms)
+                        let realizePause = useconds_t(Double.random(in: 0.35...0.60) * 1_000_000)
+                        if !self.interruptibleSleep(microseconds: realizePause) { break }
+
+                        // Human cadence backspacing to erase the typo and overrun
+                        for _ in 0..<overrunCount {
+                            if self.isCancelled { break }
+                            self.postVirtualKey(code: 51) // Backspace
+                            _ = self.interruptibleSleep(microseconds: useconds_t(Int.random(in: 90000...140000)))
+                        }
+                        _ = self.interruptibleSleep(microseconds: 200_000) // Brief recovery
                     }
 
                     // Type actual character
                     self.postUnicodeChar(char)
                     prevChar = char
 
-                    // Inter-keystroke interval
+                    // Token & word boundary hesitations
+                    if char == " " || char == "," || char == "." || char == "(" || char == ")" {
+                        let punctPause = useconds_t(Double.random(in: 0.45...0.85) * 1_000_000)
+                        if !self.interruptibleSleep(microseconds: punctPause) { break }
+                    } else if char == "=" || char == "+" || char == "-" || char == "%" || char == ":" || char == "<" || char == ">" {
+                        let opPause = useconds_t(Double.random(in: 0.50...0.95) * 1_000_000)
+                        if !self.interruptibleSleep(microseconds: opPause) { break }
+                    }
+
                     let iki = self.sampleGaussianIKI()
                     if !self.interruptibleSleep(microseconds: iki) { break }
+                    charIdx += 1
                 }
 
                 // Determine expectedEditorIndent for subsequent line
                 if !trimmedContent.isEmpty {
                     let cleanLine = trimmedContent.components(separatedBy: "#").first?.trimmingCharacters(in: .whitespaces) ?? trimmedContent
-                    if cleanLine.hasSuffix(":") || cleanLine.hasSuffix("{") {
-                        expectedEditorIndent = actualIndent + 4
-                    } else {
-                        expectedEditorIndent = actualIndent
-                    }
+                    expectedEditorIndent = (cleanLine.hasSuffix(":") || cleanLine.hasSuffix("{")) ? (actualIndent + 4) : actualIndent
                 }
 
-                // Newline handling
+                // Newline handling: Dismiss autocomplete popup with Escape before Return to avoid suggestion interception
                 if lineIdx < lines.count - 1 {
+                    self.dismissAutocomplete()
                     self.postVirtualKey(code: 36) // Return (kVK_Return = 36)
-                    let returnDelay = useconds_t(Int.random(in: 90000...180000))
+                    let returnDelay = useconds_t(Double.random(in: 2.2...3.8) * 1_000_000)
                     if !self.interruptibleSleep(microseconds: returnDelay) { break }
                     prevChar = "\n"
                 }
@@ -434,11 +423,8 @@ class SpatialOCRManager {
     static let shared = SpatialOCRManager()
     private var accumulatedProblemLines: [String] = []
 
-    func reset() {
-        accumulatedProblemLines.removeAll()
-    }
+    func reset() { accumulatedProblemLines.removeAll() }
 
-    // Captures Retina display buffer and splits text by X-coordinate
     func captureSplitScreen() async -> (problemText: String, editorText: String)? {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -463,45 +449,32 @@ class SpatialOCRManager {
             try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
             guard let results = request.results, !results.isEmpty else { return nil }
 
-            var leftObservations: [(text: String, box: CGRect)] = []
-            var rightObservations: [(text: String, box: CGRect)] = []
+            var leftObs: [(text: String, box: CGRect)] = []
+            var rightObs: [(text: String, box: CGRect)] = []
 
             for obs in results {
-                guard let candidate = obs.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines), !candidate.isEmpty else { continue }
-                let box = obs.boundingBox // Normalized [0, 1] coordinates (bottom-left origin)
-
-                // Split at X = 0.52: Left is problem specification, Right is code editor & console
-                if box.midX <= 0.52 {
-                    leftObservations.append((candidate, box))
-                } else {
-                    rightObservations.append((candidate, box))
-                }
+                guard let text = obs.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { continue }
+                if obs.boundingBox.midX <= 0.52 { leftObs.append((text, obs.boundingBox)) }
+                else { rightObs.append((text, obs.boundingBox)) }
             }
 
-            // Sort vertical descending (top of screen to bottom)
-            let sortedLeft = leftObservations.sorted { $0.box.midY > $1.box.midY }.map { $0.text }
-            let sortedRight = rightObservations.sorted { $0.box.midY > $1.box.midY }.map { $0.text }
+            let sortedLeft = leftObs.sorted { $0.box.midY > $1.box.midY }.map { $0.text }
+            let sortedRight = rightObs.sorted { $0.box.midY > $1.box.midY }.map { $0.text }
 
-            let leftStitched = self.stitchScrollBuffer(incomingLines: sortedLeft)
-            let rightRaw = sortedRight.joined(separator: "\n")
-
-            return (problemText: leftStitched, editorText: rightRaw)
+            return (problemText: stitchScrollBuffer(incomingLines: sortedLeft), editorText: sortedRight.joined(separator: "\n"))
         } catch {
             print("❌ OCR Error: \(error.localizedDescription)")
             return nil
         }
     }
 
-    // Sliding Overlap Deduplicator across user scroll events
     private func stitchScrollBuffer(incomingLines: [String]) -> String {
         guard !incomingLines.isEmpty else { return accumulatedProblemLines.joined(separator: "\n") }
-
         if accumulatedProblemLines.isEmpty {
             accumulatedProblemLines = incomingLines
             return incomingLines.joined(separator: "\n")
         }
 
-        // Divergence Check: If incoming screen shares zero overlap with previous buffer, a new problem was loaded
         let existingTokens = Set(accumulatedProblemLines.joined(separator: " ").lowercased().components(separatedBy: .whitespacesAndNewlines))
         let incomingTokens = Set(incomingLines.joined(separator: " ").lowercased().components(separatedBy: .whitespacesAndNewlines))
         let overlapRatio = Double(existingTokens.intersection(incomingTokens).count) / Double(max(1, incomingTokens.count))
@@ -511,41 +484,28 @@ class SpatialOCRManager {
             return incomingLines.joined(separator: "\n")
         }
 
-        // Suffix-Prefix Matching (10 lines down to 2)
         let maxMatch = min(accumulatedProblemLines.count, incomingLines.count, 10)
         var matchCount = 0
-
         for count in stride(from: maxMatch, through: 2, by: -1) {
-            let bufferSuffix = accumulatedProblemLines.suffix(count).map { $0.trimmingCharacters(in: .whitespaces) }
-            let incomingPrefix = incomingLines.prefix(count).map { $0.trimmingCharacters(in: .whitespaces) }
-            if Array(bufferSuffix) == Array(incomingPrefix) {
-                matchCount = count
-                break
-            }
+            let buf = accumulatedProblemLines.suffix(count).map { $0.trimmingCharacters(in: .whitespaces) }
+            let inc = incomingLines.prefix(count).map { $0.trimmingCharacters(in: .whitespaces) }
+            if Array(buf) == Array(inc) { matchCount = count; break }
         }
 
-        let freshLines = incomingLines.dropFirst(matchCount)
-        accumulatedProblemLines.append(contentsOf: freshLines)
+        accumulatedProblemLines.append(contentsOf: incomingLines.dropFirst(matchCount))
         return accumulatedProblemLines.joined(separator: "\n")
     }
 }
 
 // ============================================================================
-// 6. Direct REST Intelligence Engine (Gemini 2.0 Flash REST Client)
+// 6. Direct REST Intelligence Engine (Multi-Model Failover Cascade)
 // ============================================================================
 class GeminiRESTClient {
     static let shared = GeminiRESTClient()
 
-    // Resolves API key from environment variable or ~/.config/overlay/gemini_api_key.txt
     private func resolveAPIKey() -> String? {
-        if let envKey = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !envKey.isEmpty {
-            return envKey
-        }
-        let candidatePaths = [
-            "~/.config/overlay/gemini_api_key.txt",
-            "~/.config/overlay/api_key.txt"
-        ]
-        for candidate in candidatePaths {
+        if let envKey = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !envKey.isEmpty { return envKey }
+        for candidate in ["~/.config/overlay/gemini_api_key.txt", "~/.config/overlay/api_key.txt"] {
             let path = NSString(string: candidate).expandingTildeInPath
             if let fileKey = try? String(contentsOfFile: path, encoding: .utf8) {
                 let cleaned = fileKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -557,27 +517,20 @@ class GeminiRESTClient {
 
     func requestSolution(problem: String, starterCode: String) async throws -> String {
         guard let apiKey = resolveAPIKey() else {
-            throw NSError(domain: "SpatialVision", code: 401, userInfo: [NSLocalizedDescriptionKey: "GEMINI_API_KEY missing. Set env or ~/.config/overlay/gemini_api_key.txt"])
+            throw NSError(domain: "SpatialVision", code: 401, userInfo: [NSLocalizedDescriptionKey: "GEMINI_API_KEY missing"])
         }
-
         let prompt = """
-        You are an autonomous algorithmic code solver.
-        The candidate is in a competitive coding assessment (e.g. HackerRank, CodeSignal).
-
-        PROBLEM STATEMENT & CONSTRAINTS:
+        You are an elite competitive programmer in an automated assessment.
+        PROBLEM:
         \(problem)
-
-        CURRENT EDITOR BOILERPLATE & FUNCTION SIGNATURE:
+        STARTER CODE:
         \(starterCode)
-
-        STRICT SYSTEM INSTRUCTIONS:
-        1. Return ONLY the executable code body that belongs directly INSIDE the pre-declared target function/method.
-        2. Do NOT include markdown code blocks (``` or ```python), class definitions, or duplicate function signatures already present.
-        3. Do NOT provide any explanatory prose, time complexity annotations, or comments.
-        4. Match the exact parameter names and types present in the starter code.
-        5. Optimize strictly for the required Big-O time and auxiliary space constraints.
+        TASK:
+        1. Write the optimal, clean, complete implementation to solve all test cases (time/space optimal).
+        2. Return ONLY the raw executable code body to place inside the function or starter template.
+        3. Do NOT wrap output in markdown fences (```). Do NOT re-declare outer signatures.
+        4. For indented languages (especially Python), prefix code with 4-space base indentation for line 0 and all subsequent lines.
         """
-
         return try await executeGeminiRequest(prompt: prompt, apiKey: apiKey)
     }
 
@@ -585,79 +538,79 @@ class GeminiRESTClient {
         guard let apiKey = resolveAPIKey() else {
             throw NSError(domain: "SpatialVision", code: 401, userInfo: [NSLocalizedDescriptionKey: "GEMINI_API_KEY missing"])
         }
-
         let prompt = """
         You are an autonomous algorithmic code debugger in a live assessment environment.
-        The candidate clicked "Run Code", and test cases failed.
-
         PROBLEM CONTEXT:
         \(problemContext)
-
-        PREVIOUS CODE IMPLEMENTATION:
+        ORIGINALLY GENERATED CODE:
         \(previousCode)
-
-        FAILED TEST CONSOLE OUTPUT & TRACEBACK:
+        CURRENT CODE IN EDITOR & TEST CONSOLE OUTPUT:
         \(consoleDiagnostics)
-
         TASK:
-        1. Diagnose the exact edge-case failure, off-by-one error, or time limit exceeded bottleneck.
-        2. Provide the complete corrected replacement code body for the function.
-        3. Return ONLY the raw executable code body with zero markdown backticks (```), no function signature re-declarations, and no conversational prose.
+        1. Carefully inspect the candidate's CURRENT CODE visible in the editor against the test console failure or traceback.
+        2. Diagnose the exact defect (e.g. edge-case failure, off-by-one error, wrong variable modification, or timeout).
+        3. Preserve the candidate's existing implementation logic, variable names, and code structure intact. Fix ONLY the flawed logic or defective lines.
+        4. Provide the complete corrected replacement code body for the function so that overwriting the existing function body produces a working, passing solution.
+        5. Return ONLY the raw executable code body with zero markdown backticks (```), no signature re-declarations, and no conversational prose.
+        6. For indented languages (especially Python), prefix code with 4-space base indentation for line 0 and all subsequent lines.
         """
-
         return try await executeGeminiRequest(prompt: prompt, apiKey: apiKey)
     }
 
+    // Cascading multi-model failover shield against HTTP 429 quota exhaustion
     private func executeGeminiRequest(prompt: String, apiKey: String) async throws -> String {
-        let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\(apiKey)"
-        guard let url = URL(string: endpoint) else {
-            throw NSError(domain: "SpatialVision", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
-        }
+        let models = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.6-flash"]
+        var lastError: Error? = nil
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 15.0
+        for model in models {
+            guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)") else { continue }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.timeoutInterval = 15.0
 
-        let body: [String: Any] = [
-            "contents": [
-                ["parts": [["text": prompt]]]
-            ],
-            "generationConfig": [
-                "temperature": 0.1,
-                "maxOutputTokens": 4096
+            let body: [String: Any] = [
+                "contents": [["parts": [["text": prompt]]]],
+                "generationConfig": ["temperature": 0.1, "maxOutputTokens": 4096]
             ]
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 else {
-            let errBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw NSError(domain: "SpatialVision", code: 500, userInfo: [NSLocalizedDescriptionKey: "Gemini HTTP error: \(errBody)"])
+            do {
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResp = response as? HTTPURLResponse else { continue }
+
+                if httpResp.statusCode == 200 {
+                    guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let candidates = json["candidates"] as? [[String: Any]],
+                          let first = candidates.first,
+                          let content = first["content"] as? [String: Any],
+                          let parts = content["parts"] as? [[String: Any]],
+                          let text = parts.first?["text"] as? String else {
+                        throw NSError(domain: "SpatialVision", code: 502, userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response from \(model)"])
+                    }
+                    return sanitizeGeneratedCode(text)
+                } else if httpResp.statusCode == 429 || httpResp.statusCode == 404 {
+                    print("⚠️ Gemini model '\(model)' returned HTTP \(httpResp.statusCode). Failing over to next available model...")
+                    let errBody = String(data: data, encoding: .utf8) ?? "Quota exceeded"
+                    lastError = NSError(domain: "SpatialVision", code: httpResp.statusCode, userInfo: [NSLocalizedDescriptionKey: "Gemini HTTP error (\(model)): \(errBody)"])
+                    continue
+                } else {
+                    let errBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+                    throw NSError(domain: "SpatialVision", code: httpResp.statusCode, userInfo: [NSLocalizedDescriptionKey: "Gemini HTTP error (\(model)): \(errBody)"])
+                }
+            } catch {
+                lastError = error
+                continue
+            }
         }
-
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let candidates = json["candidates"] as? [[String: Any]],
-              let first = candidates.first,
-              let content = first["content"] as? [String: Any],
-              let parts = content["parts"] as? [[String: Any]],
-              let text = parts.first?["text"] as? String else {
-            throw NSError(domain: "SpatialVision", code: 502, userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response"])
-        }
-
-        return sanitizeGeneratedCode(text)
+        throw lastError ?? NSError(domain: "SpatialVision", code: 500, userInfo: [NSLocalizedDescriptionKey: "All Gemini model endpoints exhausted."])
     }
 
-    // Strips accidental markdown backticks or outer wrapper text
     private func sanitizeGeneratedCode(_ raw: String) -> String {
         var lines = raw.components(separatedBy: "\n")
-        if let first = lines.first, first.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
-            lines.removeFirst()
-        }
-        if let last = lines.last, last.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
-            lines.removeLast()
-        }
-        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        while let first = lines.first?.trimmingCharacters(in: .whitespaces), first.hasPrefix("```") || first.isEmpty { lines.removeFirst() }
+        while let last = lines.last?.trimmingCharacters(in: .whitespaces), last.hasPrefix("```") || last.isEmpty { lines.removeLast() }
+        return lines.joined(separator: "\n")
     }
 }
 
@@ -669,20 +622,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var pillView: PillContentView!
     var lastProblemText = ""
     var lastGeneratedCode = ""
+    var lastStarterCode = ""
+    var stagedPatch: String? = nil
+    private var consoleWatcherTask: Task<Void, Never>? = nil
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory) // Strips Dock icon and system menu presence
-
+        NSApp.setActivationPolicy(.accessory)
         let s = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let pillW: CGFloat = 264
-        let pillH: CGFloat = 40
-        let rect = NSRect(x: s.midX - (pillW / 2), y: s.maxY - pillH - 8, width: pillW, height: pillH)
-
-        panel = PillPanel(rect: rect)
+        let pillW: CGFloat = 264, pillH: CGFloat = 40
+        panel = PillPanel(rect: NSRect(x: s.midX - (pillW / 2), y: s.maxY - pillH - 8, width: pillW, height: pillH))
         pillView = PillContentView(frame: NSRect(x: 0, y: 0, width: pillW, height: pillH))
         panel.contentView = pillView
         panel.orderFront(nil)
-
         setupHotkeys()
         print("🚀 SpatialVision Online: Pill Active at Top-Center. Hotkeys Ready.")
     }
@@ -699,52 +650,82 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let opt = UInt32(optionKey)
         let binds: [(UInt32, Int)] = [
-            (1, kVK_ANSI_S), // Option + S : Solve & Inject
-            (2, kVK_ANSI_T), // Option + T : Diagnose & Patch
-            (3, kVK_ANSI_R), // Option + R : Reset State & Buffer
-            (4, kVK_ANSI_X), // Option + X : Panic Abort
-            (5, kVK_ANSI_Q)  // Option + Q : Clean Quit
+            (1, kVK_ANSI_S), // Opt + S: Solve & Inject
+            (2, kVK_ANSI_T), // Opt + T: Diagnose & Staged Patch
+            (3, kVK_ANSI_R), // Opt + R: Reset State & Buffer
+            (4, kVK_ANSI_X), // Opt + X: Panic Abort
+            (5, kVK_ANSI_Q)  // Opt + Q: Clean Quit
         ]
-
         for (id, code) in binds {
             var ref: EventHotKeyRef?
             RegisterEventHotKey(UInt32(code), opt, EventHotKeyID(signature: OSType(0x5356), id: id), GetApplicationEventTarget(), 0, &ref)
         }
 
-        // Dead-key chord swallow matrix (absorbs stray dead-key characters)
-        let swallow = [
-            kVK_ANSI_A, kVK_ANSI_B, kVK_ANSI_C, kVK_ANSI_D, kVK_ANSI_E, kVK_ANSI_F,
-            kVK_ANSI_G, kVK_ANSI_H, kVK_ANSI_I, kVK_ANSI_J, kVK_ANSI_K, kVK_ANSI_L,
-            kVK_ANSI_M, kVK_ANSI_N, kVK_ANSI_O, kVK_ANSI_P, kVK_ANSI_U, kVK_ANSI_V,
-            kVK_ANSI_W, kVK_ANSI_Y, kVK_ANSI_Z, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7,
-            kVK_ANSI_8, kVK_ANSI_9, kVK_ANSI_0, kVK_ANSI_Semicolon, kVK_ANSI_Slash,
-            kVK_ANSI_Quote, kVK_ANSI_Comma, kVK_ANSI_Period, kVK_ANSI_Grave, kVK_ANSI_Backslash
-        ]
-        for code in swallow {
+        // Dead-key chord swallow matrix
+        let swallow = [0, 11, 8, 2, 14, 3, 5, 4, 34, 38, 40, 37, 46, 45, 31, 35, 32, 9, 13, 16, 6, 23, 22, 26, 28, 25, 29, 41, 44, 39, 43, 47, 50, 42]
+        for c in swallow {
             var ref: EventHotKeyRef?
-            RegisterEventHotKey(UInt32(code), opt, EventHotKeyID(signature: OSType(0x5356), id: 9999), GetApplicationEventTarget(), 0, &ref)
+            RegisterEventHotKey(UInt32(c), opt, EventHotKeyID(signature: OSType(0x5356), id: 9999), GetApplicationEventTarget(), 0, &ref)
         }
     }
 
     func handleHotkey(_ id: UInt32) {
         switch id {
-        case 1: // Option + S: Solve & Inject
-            triggerSolvePipeline()
-        case 2: // Option + T: Diagnose & Patch
-            triggerPatchPipeline()
-        case 3: // Option + R: Reset
-            resetAll()
-        case 4: // Option + X: Panic Abort
-            panicAbort()
-        case 5: // Option + Q: Quit
-            exit(0)
-        default:
-            break
+        case 1: triggerSolvePipeline()
+        case 2: triggerPatchPipeline()
+        case 3: resetAll()
+        case 4: panicAbort()
+        case 5: exit(0)
+        default: break
         }
     }
 
-    // Option + S : Solve & Human-Jitter Inject
+    func cancelConsoleWatcher() {
+        consoleWatcherTask?.cancel()
+        consoleWatcherTask = nil
+    }
+
+    @MainActor
+    func updateWatcherState(_ state: PillState) {
+        guard !Task.isCancelled else { return }
+        pillView.applyState(state)
+    }
+
+    func startConsoleWatcher() {
+        cancelConsoleWatcher()
+        consoleWatcherTask = Task { [weak self] in
+            print("👀 Autonomous Console Watcher active: polling every 1.5s for test results...")
+            while !Task.isCancelled {
+                do { try await Task.sleep(nanoseconds: 1_500_000_000) } catch { break }
+                if Task.isCancelled { break }
+                guard let split = await SpatialOCRManager.shared.captureSplitScreen() else { continue }
+                if Task.isCancelled { break }
+
+                let consoleText = split.editorText.lowercased()
+                let failureIndicators = ["compilation error", "wrong answer", "runtime error", "terminated due to timeout", "time limit exceeded", "traceback (most recent call last)"]
+                let successIndicators = ["congratulations", "test case 0: passed", "test case 1: passed", "all test cases passed", "success"]
+
+                if failureIndicators.contains(where: { consoleText.contains($0) }) {
+                    print("⚠️ Console Watcher: Detected test failure. Updating HUD to 'TESTS FAILED [Opt+T]'")
+                    await self?.updateWatcherState(.error("TESTS FAILED [Opt+T]"))
+                    break
+                } else if successIndicators.contains(where: { consoleText.contains($0) }) {
+                    print("🚀 Console Watcher: All test cases passed! Updating HUD to 'ALL PASSED'")
+                    await self?.updateWatcherState(.awaitingSubmit)
+                    break
+                }
+            }
+        }
+    }
+
+    func handleProgressState(_ state: PillState) {
+        pillView.applyState(state)
+        if case .awaitingRun = state { startConsoleWatcher() }
+    }
+
     func triggerSolvePipeline() {
+        stagedPatch = nil
+        cancelConsoleWatcher()
         pillView.applyState(.analyzing)
         Task { [weak self] in
             guard let self = self else { return }
@@ -752,32 +733,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 await MainActor.run { self.pillView.applyState(.error("OCR FAILED")) }
                 return
             }
-
             self.lastProblemText = split.problemText
+            self.lastStarterCode = split.editorText
             print("⚡ Problem Analyzed (\(split.problemText.count) chars). Calling Gemini REST...")
 
             do {
                 let code = try await GeminiRESTClient.shared.requestSolution(problem: split.problemText, starterCode: split.editorText)
                 self.lastGeneratedCode = code
                 print("🎯 Optimal Code Generated (\(code.count) chars). Beginning Biometric Typing...")
-
                 await MainActor.run {
-                    BiometricTyper.shared.typeCode(code) { [weak self] state in
-                        self?.pillView.applyState(state)
+                    BiometricTyper.shared.typeCode(code, starterCode: split.editorText) { [weak self] state in
+                        self?.handleProgressState(state)
                     }
                 }
             } catch {
                 print("❌ REST Intelligence Error: \(error.localizedDescription)")
                 await MainActor.run {
-                    let msg = error.localizedDescription.contains("API_KEY") ? "NO API KEY" : "REST ERROR"
-                    self.pillView.applyState(.error(msg))
+                    self.pillView.applyState(.error(error.localizedDescription.contains("API_KEY") ? "NO API KEY" : "REST ERROR"))
                 }
             }
         }
     }
 
-    // Option + T : Closed-Loop Test Failure Diagnosis & Patch
     func triggerPatchPipeline() {
+        if let patch = stagedPatch {
+            print("🚀 Staged patch detected. Candidate confirmed editor focus. Typing patch...")
+            stagedPatch = nil
+            pillView.applyState(.typing)
+            BiometricTyper.shared.typeCode(patch, starterCode: lastStarterCode) { [weak self] state in
+                self?.handleProgressState(state)
+            }
+            return
+        }
+
+        if case .evaluating = pillView.currentState {
+            print("⚠️ Evaluation already in progress. Please wait...")
+            return
+        }
+
+        cancelConsoleWatcher()
         pillView.applyState(.evaluating)
         Task { [weak self] in
             guard let self = self else { return }
@@ -785,7 +779,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 await MainActor.run { self.pillView.applyState(.error("OCR FAILED")) }
                 return
             }
-
+            self.lastStarterCode = split.editorText
             print("⚠️ Diagnosing Test Failure Console Drawer (\(split.editorText.count) chars)...")
 
             do {
@@ -795,32 +789,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     problemContext: self.lastProblemText
                 )
                 self.lastGeneratedCode = patch
-                print("🛠️ In-Place Patch Synthesized (\(patch.count) chars). Replacing previous code...")
-
-                await MainActor.run {
-                    BiometricTyper.shared.typeCode(patch, clearBeforeTyping: true) { [weak self] state in
-                        self?.pillView.applyState(state)
-                    }
-                }
+                self.stagedPatch = patch
+                print("🛠️ In-Place Patch Synthesized (\(patch.count) chars). Ready for injection.")
+                print("👉 Highlight the old function in editor (or clear it), then press Opt+T to overwrite cleanly.")
+                await MainActor.run { self.pillView.applyState(.readyToInject) }
             } catch {
                 print("❌ Patch Error: \(error.localizedDescription)")
-                await MainActor.run {
-                    self.pillView.applyState(.error("PATCH ERROR"))
-                }
+                await MainActor.run { self.pillView.applyState(.error("PATCH ERROR")) }
             }
         }
     }
 
     func resetAll() {
+        stagedPatch = nil
+        cancelConsoleWatcher()
         BiometricTyper.shared.cancel()
         SpatialOCRManager.shared.reset()
         lastProblemText = ""
         lastGeneratedCode = ""
+        lastStarterCode = ""
         pillView.applyState(.idle)
         print("🔄 SpatialVision State & Buffers Reset to IDLE.")
     }
 
     func panicAbort() {
+        stagedPatch = nil
+        cancelConsoleWatcher()
         BiometricTyper.shared.cancel()
         pillView.applyState(.idle)
         print("🛑 PANIC ABORT TRIGGERED: Typing halted instantly.")
