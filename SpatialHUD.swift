@@ -210,14 +210,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         updateBorder()
     }
 
-    // Reads ContextVault.txt first (pure plain text), falls back to .md
+    // Reads ContextVault.md first (structured semantic markdown), falls back to .txt
     func loadContextVault() -> String {
-        let txtPath = NSString(string: "~/.config/overlay/ContextVault.txt").expandingTildeInPath
-        if let t = try? String(contentsOfFile: txtPath, encoding: .utf8), !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let mdPath = NSString(string: "~/.config/overlay/ContextVault.md").expandingTildeInPath
+        if let t = try? String(contentsOfFile: mdPath, encoding: .utf8), !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return t
         }
-        let mdPath = NSString(string: "~/.config/overlay/ContextVault.md").expandingTildeInPath
-        return (try? String(contentsOfFile: mdPath, encoding: .utf8)) ?? ""
+        let txtPath = NSString(string: "~/.config/overlay/ContextVault.txt").expandingTildeInPath
+        return (try? String(contentsOfFile: txtPath, encoding: .utf8)) ?? ""
     }
 
     // ========================================================================
@@ -513,9 +513,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
 
         // 2. Candidate Ground Truth Architecture Check
         let projectKeywords = [
-            "wire fraud", "capital one", "t-mobile", "ranking engine",
+            "hyperroute", "socure", "wire fraud", "capital one", "t-mobile", "ranking engine",
             "h3 geospatial", "graphrag", "past project", "previous experience",
-            "production incident", "ast complexity", "clean room"
+            "production incident", "ast complexity", "clean room", "double-entry",
+            "fsm-engine", "banking-core", "avx-512", "google adk", "transaction guardrail",
+            "sanctions screening", "settlement", "ofac", "simd"
         ]
         for kw in projectKeywords {
             if combined.contains(kw) { return .projectDeepDive }
