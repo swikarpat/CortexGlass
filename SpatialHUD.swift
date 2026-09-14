@@ -511,7 +511,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             if combined.contains(kw) { return .behavioral }
         }
 
-        // 2. Candidate Ground Truth Architecture Check
+        // 2. System Design & Excalidraw Whiteboard Check (Prioritized over Project Name)
+        let systemKeywords = [
+            "system design", "design a", "design an", "scale to", "qps", "tps",
+            "throughput", "latency sla", "microservice", "kafka", "distributed system",
+            "sharding", "load balancer", "excalidraw", "whiteboard", "rate limiter",
+            "cache-aside", "write-through", "cdn", "nosql vs sql", "partition key",
+            "architecture", "draw", "diagram", "topology", "component flow"
+        ]
+        var systemScore = 0
+        for kw in systemKeywords {
+            if combined.contains(kw) { systemScore += 1 }
+        }
+
+        if systemScore > 0 && (combined.contains("design") || combined.contains("excalidraw") || combined.contains("whiteboard") || combined.contains("architecture") || combined.contains("diagram") || combined.contains("topology") || combined.contains("draw")) {
+            return .systemDesign
+        }
+
+        // 3. Candidate Ground Truth Architecture Check
         let projectKeywords = [
             "hyperroute", "socure", "wire fraud", "capital one", "t-mobile", "ranking engine",
             "h3 geospatial", "graphrag", "past project", "previous experience",
@@ -521,18 +538,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         ]
         for kw in projectKeywords {
             if combined.contains(kw) { return .projectDeepDive }
-        }
-
-        // 3. System Design Keywords
-        let systemKeywords = [
-            "system design", "design a", "design an", "scale to", "qps", "tps",
-            "throughput", "latency sla", "microservice", "kafka", "distributed system",
-            "sharding", "load balancer", "excalidraw", "whiteboard", "rate limiter",
-            "cache-aside", "write-through", "cdn", "nosql vs sql", "partition key"
-        ]
-        var systemScore = 0
-        for kw in systemKeywords {
-            if combined.contains(kw) { systemScore += 1 }
         }
 
         // 4. Algorithmic Engineering Keywords
@@ -640,12 +645,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             ### 1. DIRECT TECHNICAL ANSWER (Verbatim Script — Read out loud)
             2 to 3 sentences directly answering the question, anchoring on the exact project from my ground truth (Project A, B, or C), and quoting real scale ($40M+ wire fraud, 10M+ sessions, or 50k+ TPS).
 
-            ### 2. TECHNICAL MECHANISMS & TRADE-OFFS (Bullet points to speak through)
+            ### 2. MONOSPACE ASCII ARCHITECTURE (If architecture/flow asked, output exact ASCII diagram from ContextVault)
+            If the question asks about architecture, system components, or Excalidraw flow, output the clean monospace ASCII topology from ContextVault. Otherwise, provide a 1-sentence summary of the component boundaries.
+
+            ### 3. TECHNICAL MECHANISMS & TRADE-OFFS (Bullet points to speak through)
             - How it worked under the hood (mention MCP, Neo4j GraphRAG, FSMs, Redis, H3, Kafka, or PSI).
             - The specific production incident, scalability crisis, or architectural veto.
             - The engineering trade-off accepted.
 
-            ### 3. PROACTIVE TECHNICAL DIRECTION
+            ### 4. PROACTIVE TECHNICAL DIRECTION
             1 follow-up question to steer the discussion deeper into an area of strength.
             """
 
