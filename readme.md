@@ -47,17 +47,24 @@ The architecture bridges low-level macOS system APIs (`ScreenCaptureKit`, `Carbo
 * **VAD Turn-Completion Gate:** Analyzes 16kHz rolling PCM buffers via RMS energy (`RMS >= 0.015`). Automatically detects question completion upon a 0.9s pause or 18s continuous speech ceiling.
 * **Inference Target:** Hardware-accelerated `whisper.cpp` (`ggml-base.en.bin`) utilizing 8 performance cores on Apple Silicon M5 Pro for sub-200ms spoken question transcription.
 
-### 7. Autonomous Differential Screen-Change Sentinel
-* **Mechanism:** 2.0s background heartbeat polling display buffers via `SCShareableContent` on an isolated `.userInteractive` queue.
-* **Smart Text Diffing:** Compares token set differentials (`oldLines` vs `newLines`). Filters cursor blinks and clock noise while instantly detecting when code or architecture canvas elements are updated in the active workspace in complete silence.
-* **Stabilization Debounce:** Applies a 1.2s debounce after detected shifts before auto-dispatching multimodal synthesis.
+### 7. Anti-Thrashing Screen OCR & Algorithmic Anchoring
+* **Trigger Isolation:** Autonomous screen diffing loops and character-delta triggers are disabled to eliminate UI thrashing and premature refreshes while the candidate types in CoderPad.
+* **Controlled OCR Snapshots:** Screen OCR (`captureScreenText()`) is exclusively invoked:
+  1. As a context snapshot when the remote audio stream completes an interviewer utterance (`silenceDuration >= 0.9s`), OR
+  2. When explicitly requested via manual hotkey (`Option + O`).
+* **Algorithmic Anchoring Mandate:** Generative synthesis strictly preserves the candidate's existing algorithmic strategy, data structures, and naming conventions in CoderPad, preventing disruptive paradigm shifts.
 
-### 8. Auto-Adaptive Cognitive Routing & Context Synthesis
+### 8. Auto-Adaptive Cognitive Routing & Dual-Tier Synthesis
 * **Dynamic Classifier:** Inspects fused spoken words and screen text to automatically select optimal prompt structures:
-  - **Algorithmic Engineering & DSA:** Technical approach synthesis, minimal patch implementation, Big-O complexity analysis, and concurrency edge cases.
+  - **Algorithmic Engineering & DSA:** Dual-tier output providing (1) natural verbal talking points & Big-O complexity for immediate recitation, and (2) clean Python 3 implementation / patch matching `main.py`.
   - **Distributed System Design:** Latency/throughput SLAs, monospace ASCII architecture topology (Excalidraw-ready), and partitioning/caching trade-offs.
   - **Domain Retrospectives & Architecture:** Grounded domain telemetry and verified production metrics ($40M+ wire fraud, 10M+ sessions, 50k+ TPS) via `ContextVault.txt`.
-* **Zero-Touch Operation:** Hands-free execution during live technical sessions with emergency Carbon hotkey overrides (`Opt+1` through `Opt+4`, `Opt+R` for instant session cache purge).
+* **4 Streamlined Essential Hotkeys:** Hands-free execution during live technical sessions with 4 essential Carbon hotkeys:
+  - `Option + O`: Manual Screen OCR Snapshot
+  - `Option + Z`: Stealth HUD Visibility Toggle
+  - `Option + I`: Interactive Click-Through Toggle
+  - `Option + R`: Silent DOM & Memory Reset
+  - *Full Dead-Key Suppression:* Absorbs all other `Option + Key` combinations at the OS level to prevent accidental character leaks (`®`, `´`, `π`, `å`, `œ`, `≈`) into CoderPad while preserving `Option + Left/Right` for native word jumping.
 
 ---
 
