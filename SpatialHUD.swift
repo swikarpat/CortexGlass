@@ -89,8 +89,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     var audioSamples: [Float] = []
     let audioQueue = DispatchQueue(label: "com.swikar.audio.q", qos: .userInteractive)
 
-    // Autonomous Background Screen-Change Sentinel
-    var isScreenWatching = true
+    // Autonomous Background Screen-Change Sentinel (Disabled to prevent CoderPad thrashing)
+    var isScreenWatching = false
     var lastScreenText: String = ""
     var screenDebounceWorkItem: DispatchWorkItem?
     let visionQueue = DispatchQueue(label: "com.swikar.vision.diff", qos: .userInteractive)
@@ -127,10 +127,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         }
         panel.orderFront(nil)
 
-        // Hands-Free Sentinel Boot: Auto-start audio tap and screen change watcher
+        // Hands-Free Sentinel Boot: Auto-start audio tap (screen OCR strictly on utterance finish or Option+O)
         startAudioCapture()
         startScreenWatcher()
-        print("🚀 CortexGlass Online: Audio Stream Tap & Differential Screen Sentinel ACTIVE.")
+        print("🚀 CortexGlass Online: System Audio Stream Tap ACTIVE. Screen OCR restricted to Utterance Snapshot & Option+O.")
     }
 
     // Strips extraneous Gemini UI elements for a clean HUD telemetry view
@@ -438,61 +438,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     }
 
     // ========================================================================
-    // 6. Autonomous Screen-Change Sentinel (Silent Workspace Diffing Engine)
+    // 6. Autonomous Screen-Change Sentinel (Disabled to Eliminate UI Thrashing)
     // ========================================================================
+    // NOTE: Autonomous screen diffing (delta >= 20 trigger) is disabled so typing
+    // in CoderPad NEVER triggers Gemini or causes HUD refreshes.
+    // Screen OCR is strictly restricted to:
+    // 1. Audio stream completion snapshot (silenceDuration >= 0.9s)
+    // 2. Explicit manual hotkey (Option + O)
     func startScreenWatcher() {
         guard isScreenWatching else { return }
-        Task { [weak self] in
-            guard let self = self, self.isScreenWatching else { return }
-            let currentText = await self.captureScreenText()
-
-            if !currentText.isEmpty {
-                if self.lastScreenText.isEmpty {
-                    // Initial baseline snapshot
-                    self.lastScreenText = currentText
-                    print("📸 Baseline Workspace/Screen Context Cached (\(currentText.count) chars).")
-                } else {
-                    let delta = abs(currentText.count - self.lastScreenText.count)
-                    if delta >= 20 || self.isSignificantTextChange(old: self.lastScreenText, new: currentText) {
-                        print("⚡ Workspace update detected (Δ \(delta) chars). Debouncing for stabilization...")
-                        self.screenDebounceWorkItem?.cancel()
-
-                        let workItem = DispatchWorkItem { [weak self] in
-                            guard let self = self else { return }
-                            self.lastScreenText = currentText
-                            print("🚀 Auto-Triggering Multimodal Solution from workspace text update...")
-
-                            // Auto-classify mode
-                            let detected = self.classifyContext(spokenText: "", screenText: currentText)
-                            if detected != self.currentMode {
-                                self.currentMode = detected
-                                print("🔀 Auto-Switched Mode: \(detected.label)")
-                                DispatchQueue.main.async { self.updateBorder() }
-                            }
-
-                            let prompt = self.buildPrompt(spokenInput: "", screenContext: currentText)
-                            DispatchQueue.main.async { self.sendToGemini(prompt) }
-                        }
-
-                        self.screenDebounceWorkItem = workItem
-                        self.visionQueue.asyncAfter(deadline: .now() + 1.2, execute: workItem)
-                    }
-                }
-            }
-
-            // Continuous 2.0s Sentinel Heartbeat on Apple Silicon M5 Pro
-            self.visionQueue.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                self?.startScreenWatcher()
-            }
-        }
-    }
-
-    // Detects meaningful code/diagram updates while filtering clock/cursor noise
-    func isSignificantTextChange(old: String, new: String) -> Bool {
-        let oldLines = Set(old.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { $0.count > 3 })
-        let newLines = Set(new.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { $0.count > 3 })
-        let added = newLines.subtracting(oldLines)
-        return added.count >= 2 || (added.count == 1 && (added.first?.count ?? 0) >= 15)
     }
 
     // ========================================================================
@@ -580,6 +534,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         FALLBACK POLICY:
         For past projects, technical vetoes, or architectural decisions, answer STRICTLY using the ground truth above.
         For new algorithmic challenges, live debugging, or distributed systems design questions not covered above, seamlessly leverage your full Staff-level knowledge to provide the optimal solution in my voice.
+
+        CONTINUITY & ANCHORING MANDATE:
+        Inspect the existing code currently in CoderPad. You MUST preserve the candidate's existing algorithmic strategy, data structures, and variable naming conventions. Expand or patch the current code. NEVER pivot to an entirely different algorithmic paradigm unless explicitly instructed by the interviewer's speech.
         """
 
         switch currentMode {
@@ -593,18 +550,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             CURRENT SCREEN CODE BUFFER (OCR from Workspace/IDE):
             \(screenContext)
 
-            OUTPUT EXACTLY IN THIS TECHNICAL BRIEFING FORMAT:
-            ### 1. TECHNICAL APPROACH SUMMARY (Verbatim Script — Read out loud)
-            2 to 3 natural spoken sentences directly explaining the optimal algorithmic approach or the exact bug/race condition, and setting up the code change.
+            OUTPUT EXACTLY IN THIS DUAL-TIER FORMAT:
+            ### 1. TALKING POINTS & CONCEPTUAL REASONING (Verbatim to speak aloud)
+            2 to 3 natural sentences explaining the approach, trade-offs, and Big-O time/space complexity.
 
-            ### 2. EXACT CODE IMPLEMENTATION / BUG FIX
-            Minimal, clean, production-grade code. If debugging, provide ONLY the corrected snippet replacing the faulty lines. If writing from scratch, match any existing function signatures on screen.
-
-            ### 3. TIME & SPACE COMPLEXITY
-            1 sentence summarizing Big-O time and auxiliary space to explain aloud.
-
-            ### 4. SUBTLE TRAP / EDGE CASE TO HIGHLIGHT
-            1 sentence calling out a senior engineering consideration (e.g., concurrency deadlock, off-by-one, null safety, or memory leak).
+            ### 2. EXACT CODE IMPLEMENTATION / PATCH
+            Clean Python 3 code matching CoderPad `main.py`. If the interviewer only asked a conceptual question, output: "No code changes needed—verbal answer only."
             """
 
         case .systemDesign:
@@ -673,23 +624,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         }
     }
 
-    // Manual OCR Fallback (Option + O / Option + P)
-    func runOCR(append: Bool = false) {
+    // Manual OCR Snapshot (Option + O)
+    func runOCR() {
         Task {
             let text = await captureScreenText()
             guard !text.isEmpty else { return }
 
-            let dump = append && !questionBuffer.isEmpty ? "\(questionBuffer)\n\(text)" : text
-            questionBuffer = append ? "" : text
-            lastScreenText = dump
+            lastScreenText = text
 
-            let detected = classifyContext(spokenText: "", screenText: dump)
+            let detected = classifyContext(spokenText: "", screenText: text)
             if detected != currentMode {
                 currentMode = detected
                 DispatchQueue.main.async { self.updateBorder() }
             }
 
-            let prompt = buildPrompt(spokenInput: "", screenContext: dump)
+            let prompt = buildPrompt(spokenInput: "", screenContext: text)
             DispatchQueue.main.async { self.sendToGemini(prompt) }
         }
     }
@@ -703,7 +652,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     }
 
     // ========================================================================
-    // 9. Carbon Hotkeys & Swallowing Engine
+    // 9. Carbon Hotkeys & Swallowing Engine (Streamlined to 4 Essential Hotkeys)
     // ========================================================================
     func setupHotkeys() {
         var s = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -716,26 +665,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         }, 1, &s, Unmanaged.passUnretained(self).toOpaque(), nil)
 
         let opt = UInt32(optionKey)
+
+        // 4 Essential Hotkeys:
+        // 1. Option + O : Manual Screen OCR Snapshot
+        // 2. Option + Z : Stealth HUD Visibility Toggle
+        // 3. Option + I : Interactive Click-Through Toggle
+        // 4. Option + R : Silent Round & Memory Reset
         let binds: [(UInt32, Int)] = [
-            (1, kVK_ANSI_Z), (2, kVK_ANSI_V), (3, kVK_ANSI_S), (4, kVK_ANSI_Q),
-            (5, kVK_ANSI_Equal), (6, kVK_ANSI_Minus), (7, kVK_ANSI_LeftBracket), (8, kVK_ANSI_RightBracket),
-            (9, kVK_DownArrow), (10, kVK_UpArrow), (11, kVK_ANSI_O), (12, kVK_ANSI_P),
-            (13, kVK_ANSI_A), (14, kVK_ANSI_1), (15, kVK_ANSI_2), (16, kVK_ANSI_3),
-            (17, kVK_ANSI_4), (18, kVK_ANSI_R), (19, kVK_ANSI_T), (20, kVK_ANSI_E),
-            (21, kVK_ANSI_I)
+            (1, kVK_ANSI_O), // Option + O
+            (2, kVK_ANSI_Z), // Option + Z
+            (3, kVK_ANSI_I), // Option + I
+            (4, kVK_ANSI_R)  // Option + R
         ]
         for (id, code) in binds {
             var ref: EventHotKeyRef?
             RegisterEventHotKey(UInt32(code), opt, EventHotKeyID(signature: OSType(0x5350), id: id), GetApplicationEventTarget(), 0, &ref)
         }
 
-        // Active key suppression matrix to swallow stray dead-key chords
+        // Active key suppression matrix to swallow all other Option + key chords.
+        // Prevents dead-key symbol leaks into external code editors (CoderPad).
+        // Preserves Option + Left/Right arrows for native word navigation.
         let swallow = [
-            kVK_ANSI_B, kVK_ANSI_C, kVK_ANSI_D, kVK_ANSI_F, kVK_ANSI_G, kVK_ANSI_H,
-            kVK_ANSI_J, kVK_ANSI_K, kVK_ANSI_L, kVK_ANSI_M, kVK_ANSI_N, kVK_ANSI_U,
-            kVK_ANSI_W, kVK_ANSI_X, kVK_ANSI_Y, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7,
-            kVK_ANSI_8, kVK_ANSI_9, kVK_ANSI_0, kVK_ANSI_Semicolon, kVK_ANSI_Slash,
-            kVK_ANSI_Quote, kVK_ANSI_Comma, kVK_ANSI_Period, kVK_ANSI_Grave, kVK_ANSI_Backslash
+            kVK_ANSI_A, kVK_ANSI_B, kVK_ANSI_C, kVK_ANSI_D, kVK_ANSI_E, kVK_ANSI_F,
+            kVK_ANSI_G, kVK_ANSI_H, kVK_ANSI_J, kVK_ANSI_K, kVK_ANSI_L, kVK_ANSI_M,
+            kVK_ANSI_N, kVK_ANSI_P, kVK_ANSI_Q, kVK_ANSI_S, kVK_ANSI_T, kVK_ANSI_U,
+            kVK_ANSI_V, kVK_ANSI_W, kVK_ANSI_X, kVK_ANSI_Y,
+            kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4,
+            kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9,
+            kVK_ANSI_Equal, kVK_ANSI_Minus, kVK_ANSI_LeftBracket, kVK_ANSI_RightBracket,
+            kVK_ANSI_Semicolon, kVK_ANSI_Slash, kVK_ANSI_Quote, kVK_ANSI_Comma,
+            kVK_ANSI_Period, kVK_ANSI_Grave, kVK_ANSI_Backslash
         ]
         for code in swallow {
             var ref: EventHotKeyRef?
@@ -745,25 +704,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
 
     func handleKey(_ id: UInt32) {
         switch id {
-        case 1: panel.alphaValue = panel.alphaValue > 0 ? 0 : opacity
-        case 2: if let t = NSPasteboard.general.string(forType: .string) { sendToGemini(t) }
-        case 3: webView.evaluateJavaScript("document.querySelectorAll('button').forEach(b => (b.innerText.includes('Stop') || b.getAttribute('aria-label')?.includes('Stop')) && b.click())", completionHandler: nil)
-        case 4: exit(0)
-        case 5: scaleWindow(1.08)
-        case 6: scaleWindow(0.92)
-        case 7, 8: opacity = max(0.2, min(1.0, opacity + (id == 8 ? 0.15 : -0.15))); panel.alphaValue = opacity
-        case 9, 10: webView.evaluateJavaScript("window.scrollBy({top: \(id == 9 ? 400 : -400), behavior: 'smooth'})", completionHandler: nil)
-        case 11: runOCR(append: false)
-        case 12: runOCR(append: true)
-        case 13: toggleAudio()
-        case 14: currentMode = .coding; updateBorder(); print("Manual Switch: Coding")
-        case 15: currentMode = .systemDesign; updateBorder(); print("Manual Switch: System Design")
-        case 16: currentMode = .projectDeepDive; updateBorder(); print("Manual Switch: Project Deep Dive")
-        case 17: currentMode = .behavioral; updateBorder(); print("Manual Switch: Leadership")
-        case 18: resetRound()
-        case 19: sendToGemini("Summarize your previous response into 2 ultra-concise, high-impact bullet points for an immediate 15-second verbal summary right now.")
-        case 20: sendToGemini("Elaborate on that specific solution: drill down into low-level internals, concurrency handling, and failure modes.")
-        case 21: toggleInteractive()
+        case 1: runOCR()                                               // Option + O : Manual Screen OCR Snapshot
+        case 2: panel.alphaValue = panel.alphaValue > 0 ? 0 : opacity   // Option + Z : Stealth HUD Visibility Toggle
+        case 3: toggleInteractive()                                    // Option + I : Interactive Click-Through Toggle
+        case 4: resetRound()                                           // Option + R : Silent Round & Memory Reset
         default: break
         }
     }
