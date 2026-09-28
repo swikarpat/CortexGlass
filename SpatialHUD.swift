@@ -54,40 +54,47 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     var opacity: CGFloat = 1.0
     var questionBuffer = ""
 
-    // 4-Mode Cognitive Routing Engine
+    // 4-Mode Cognitive Routing Engine (Default: Coding / DSA)
     enum Mode {
-        case coding, systemDesign, projectDeepDive, behavioral
+        case coding, systemDesign, behavioral, projectDeepDive
 
         var color: CGColor {
             switch self {
             case .coding:          return NSColor(red: 0.22, green: 0.74, blue: 0.97, alpha: 0.95).cgColor // Electric Cyan
             case .systemDesign:    return NSColor(red: 0.65, green: 0.33, blue: 0.97, alpha: 0.95).cgColor // Neon Violet
-            case .projectDeepDive: return NSColor(red: 0.96, green: 0.62, blue: 0.04, alpha: 0.95).cgColor // Amber Gold
             case .behavioral:      return NSColor(red: 0.96, green: 0.25, blue: 0.37, alpha: 0.95).cgColor // Rose Red
+            case .projectDeepDive: return NSColor(red: 0.96, green: 0.62, blue: 0.04, alpha: 0.95).cgColor // Amber Gold
             }
         }
 
         var label: String {
             switch self {
             case .coding:          return "Coding / DSA"
-            case .systemDesign:    return "System Design (ASCII)"
-            case .projectDeepDive: return "Project Deep Dive"
-            case .behavioral:      return "Leadership / STAR"
+            case .systemDesign:    return "System Design (ASCII & Scaled Architecture)"
+            case .behavioral:      return "Leadership & Behavioral (STAR Method)"
+            case .projectDeepDive: return "Past Project Retrospective & System Architecture"
             }
         }
     }
 
     var currentMode: Mode = .coding
 
-    // Continuous Rolling Audio Tap & VAD State (Auto-Active on Boot)
+    func switchMode(_ mode: Mode) {
+        currentMode = mode
+        print("🔀 Mode Switched: \(mode.label)")
+        updateBorder()
+    }
+
+    // Manual Session Recording State, 5s Pre-Roll Buffer & Multi-Turn Counter
+    var isSessionRecording: Bool = false
     var isAudioListening = true
-    var isSpeaking = false
-    var isTranscribing = false
     var speechDuration: Double = 0
     var silenceDuration: Double = 0
     var audioStream: SCStream?
     var audioSamples: [Float] = []
+    var preRollBuffer: [Float] = []
     let audioQueue = DispatchQueue(label: "com.swikar.audio.q", qos: .userInteractive)
+    var solveCount: Int = 0
 
     // Autonomous Background Screen-Change Sentinel (Disabled to prevent CoderPad thrashing)
     var isScreenWatching = false
@@ -127,10 +134,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         }
         panel.orderFront(nil)
 
-        // Hands-Free Sentinel Boot: Auto-start audio tap (screen OCR strictly on utterance finish or Option+O)
+        // Hands-Free Sentinel Boot: Auto-start audio tap (Mode strictly locked to Coding / DSA default)
         startAudioCapture()
         startScreenWatcher()
-        print("🚀 CortexGlass Online: System Audio Stream Tap ACTIVE. Screen OCR restricted to Utterance Snapshot & Option+O.")
+        print("🚀 CortexGlass Online: Audio Stream Tap ACTIVE. Mode Locked: \(currentMode.label) (Opt+1, Opt+2, Opt+3, Opt+4). Opt+S starts recording, Opt+Return stops & solves, Opt+O quits.")
     }
 
     // Strips extraneous Gemini UI elements for a clean HUD telemetry view
@@ -154,13 +161,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     }
 
     // Dynamic Border Visual Feedback:
-    // White = Interactive Mode; Glowing Emerald = Remote Audio Stream Active; Mode Color = Idle Sentinel Mode
+    // White = Interactive Mode; Vivid Amber/Red = Active Session Recording; Mode Color = Idle Sentinel Mode
     func updateBorder() {
         if panel.isInteractive {
             panel.contentView?.layer?.borderColor = NSColor.white.cgColor
             panel.contentView?.layer?.borderWidth = 2.5
-        } else if isSpeaking {
-            panel.contentView?.layer?.borderColor = NSColor(red: 0.1, green: 0.85, blue: 0.55, alpha: 1.0).cgColor // Vivid Emerald
+        } else if isSessionRecording {
+            panel.contentView?.layer?.borderColor = NSColor(red: 0.95, green: 0.35, blue: 0.15, alpha: 1.0).cgColor // Vivid Amber/Red ACTIVE RECORDING
             panel.contentView?.layer?.borderWidth = 2.5
         } else {
             panel.contentView?.layer?.borderColor = currentMode.color
@@ -184,10 +191,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     // Option + R : Silent DOM & Memory Reset between collaborative sessions
     func resetRound() {
         questionBuffer = ""
-        audioSamples.removeAll()
-        isSpeaking = false
-        speechDuration = 0
-        silenceDuration = 0
+        isSessionRecording = false
+        solveCount = 0
+        audioQueue.sync {
+            audioSamples.removeAll()
+            preRollBuffer.removeAll()
+            speechDuration = 0
+            silenceDuration = 0
+        }
         lastScreenText = ""
         screenDebounceWorkItem?.cancel()
         try? FileManager.default.removeItem(atPath: "/tmp/cortex_audio_stream.wav")
@@ -258,7 +269,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         if !isAudioListening {
             audioStream?.stopCapture(completionHandler: nil)
             audioStream = nil
-            isSpeaking = false
             print("🔇 Audio Tap Muted.")
         } else {
             startAudioCapture()
@@ -266,9 +276,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         updateBorder()
     }
 
-    // Continuous Rolling Buffer + VAD Turn Completion Engine
+    // Audio Stream Tap - Rolling Pre-Roll Buffer (Idle) & Session Accumulation (Recording)
     func stream(_ stream: SCStream, didOutputSampleBuffer sb: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .audio, isAudioListening, !isTranscribing,
+        guard type == .audio, isAudioListening,
               let desc = CMSampleBufferGetFormatDescription(sb),
               let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)?.pointee else { return }
 
@@ -293,54 +303,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         }
         guard !chunk.isEmpty else { return }
 
-        let rms = sqrt(chunk.reduce(0) { $0 + $1 * $1 } / Float(chunk.count))
-        let dur = Double(chunk.count) / 16000.0
-
-        if rms >= 0.015 {
-            if !isSpeaking {
-                isSpeaking = true
-                speechDuration = 0
-                DispatchQueue.main.async { self.updateBorder() }
-            }
-            silenceDuration = 0
+        if isSessionRecording {
+            let dur = Double(chunk.count) / 16000.0
             speechDuration += dur
             audioSamples.append(contentsOf: chunk)
 
-            // SLIDING BUFFER TRIGGER: Continuous remote speech (>= 18s) without pause
-            if speechDuration >= 18.0 {
-                let s = audioSamples
-                isTranscribing = true
-                speechDuration = 0
-                if audioSamples.count > 32000 { audioSamples = Array(audioSamples.suffix(32000)) } // Retain 2s context
-                DispatchQueue.global(qos: .userInteractive).async { self.processWhisper(samples: s) }
+            // Keep sample capacity safe up to 10 minutes of continuous recording (16000 samples/sec * 600s)
+            let maxSamples = 16000 * 600
+            if audioSamples.count > maxSamples {
+                audioSamples.removeFirst(audioSamples.count - maxSamples)
             }
-
-            if audioSamples.count > 480000 { audioSamples.removeFirst(80000) }
-        } else if isSpeaking {
-            silenceDuration += dur
-            audioSamples.append(contentsOf: chunk)
-
-            // AGGRESSIVE TURN COMPLETION: 0.9s silence confirms speaker finished query
-            if silenceDuration >= 0.9 {
-                let s = audioSamples
-                let spk = speechDuration
-                isSpeaking = false
-                speechDuration = 0
-                silenceDuration = 0
-                audioSamples.removeAll()
-                DispatchQueue.main.async { self.updateBorder() }
-
-                if spk >= 1.0 {
-                    self.isTranscribing = true
-                    DispatchQueue.global(qos: .userInteractive).async { self.processWhisper(samples: s) }
-                }
+        } else {
+            // Rolling 5-second pre-roll audio buffer (16,000 samples/sec * 5s = 80,000 samples)
+            preRollBuffer.append(contentsOf: chunk)
+            if preRollBuffer.count > 80000 {
+                preRollBuffer.removeFirst(preRollBuffer.count - 80000)
             }
         }
     }
 
-    // Whisper ANE Execution & Multimodal Audio-Visual Fusion Trigger
-    func processWhisper(samples: [Float]) {
-        defer { isTranscribing = false }
+    nonisolated static func transcribeSamples(_ samples: [Float]) -> String {
         var pcm = Data()
         pcm.reserveCapacity(samples.count * 2)
         for s in samples {
@@ -372,33 +354,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         p.standardOutput = pipe
         p.standardError = Pipe()
 
-        guard (try? p.run()) != nil else { return }
+        guard (try? p.run()) != nil else { return "" }
         p.waitUntilExit()
 
-        guard let txt = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) else { return }
-        let c = txt.replacingOccurrences(of: "[BLANK_AUDIO]", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if c.count >= 6 {
-            print("🎯 Audio Query Transcribed: \"\(c)\"")
-            Task {
-                let screenText = await self.captureScreenText()
-                if !screenText.isEmpty { self.lastScreenText = screenText }
-
-                // Auto-classify problem mode from spoken + screen context
-                let detected = self.classifyContext(spokenText: c, screenText: screenText)
-                if detected != self.currentMode {
-                    self.currentMode = detected
-                    print("🔀 Auto-Switched Mode: \(detected.label)")
-                    DispatchQueue.main.async { self.updateBorder() }
-                }
-
-                let prompt = self.buildPrompt(spokenInput: c, screenContext: screenText)
-                DispatchQueue.main.async { self.sendToGemini(prompt) }
-            }
-        }
+        guard let txt = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) else { return "" }
+        return txt.replacingOccurrences(of: "[BLANK_AUDIO]", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    func makeWav(size: Int) -> Data {
+    nonisolated static func makeWav(size: Int) -> Data {
         var h = Data("RIFF".utf8); var s = UInt32(36 + size).littleEndian; h.append(Data(bytes: &s, count: 4))
         h.append(Data("WAVEfmt ".utf8)); var ss: UInt32 = 16, f: UInt16 = 1, ch: UInt16 = 1, sr: UInt32 = 16000
         var br: UInt32 = 32000, ba: UInt16 = 2, bp: UInt16 = 16, ds = UInt32(size).littleEndian
@@ -443,75 +406,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     // NOTE: Autonomous screen diffing (delta >= 20 trigger) is disabled so typing
     // in CoderPad NEVER triggers Gemini or causes HUD refreshes.
     // Screen OCR is strictly restricted to:
-    // 1. Audio stream completion snapshot (silenceDuration >= 0.9s)
-    // 2. Explicit manual hotkey (Option + O)
+    // 1. Session Recording completion snapshot (Option + Return: Stop & Solve)
+    // 2. Direct single-shot snapshot (Option + Return when not recording)
     func startScreenWatcher() {
         guard isScreenWatching else { return }
     }
 
     // ========================================================================
-    // 7. Auto-Adaptive Cognitive Classifier (Zero-Hotkey Mode Routing)
+    // 7. Cognitive Context Classifier (Strict Mode Locking - Auto-Switching Disabled)
     // ========================================================================
+    // NOTE: Automatic mode switching is strictly disabled. The HUD strictly remains
+    // in the candidate's selected mode (default: .coding) until explicitly switched
+    // via Option + 1, Option + 2, Option + 3, or Option + 4.
     func classifyContext(spokenText: String, screenText: String) -> Mode {
-        let combined = (spokenText + " " + screenText).lowercased()
-
-        // 1. Leadership / Principles Check
-        let behavioralKeywords = [
-            "tell me about a time", "greatest failure", "disagreement with",
-            "leadership principle", "conflict with", "star method", "leadership question",
-            "how do you handle conflict", "describe a situation"
-        ]
-        for kw in behavioralKeywords {
-            if combined.contains(kw) { return .behavioral }
-        }
-
-        // 2. System Design & Excalidraw Whiteboard Check (Prioritized over Project Name)
-        let systemKeywords = [
-            "system design", "design a", "design an", "scale to", "qps", "tps",
-            "throughput", "latency sla", "microservice", "kafka", "distributed system",
-            "sharding", "load balancer", "excalidraw", "whiteboard", "rate limiter",
-            "cache-aside", "write-through", "cdn", "nosql vs sql", "partition key",
-            "architecture", "draw", "diagram", "topology", "component flow"
-        ]
-        var systemScore = 0
-        for kw in systemKeywords {
-            if combined.contains(kw) { systemScore += 1 }
-        }
-
-        if systemScore > 0 && (combined.contains("design") || combined.contains("excalidraw") || combined.contains("whiteboard") || combined.contains("architecture") || combined.contains("diagram") || combined.contains("topology") || combined.contains("draw")) {
-            return .systemDesign
-        }
-
-        // 3. Candidate Ground Truth Architecture Check
-        let projectKeywords = [
-            "hyperroute", "socure", "wire fraud", "capital one", "t-mobile", "ranking engine",
-            "h3 geospatial", "graphrag", "past project", "previous experience",
-            "production incident", "ast complexity", "clean room", "double-entry",
-            "fsm-engine", "banking-core", "avx-512", "google adk", "transaction guardrail",
-            "sanctions screening", "settlement", "ofac", "simd"
-        ]
-        for kw in projectKeywords {
-            if combined.contains(kw) { return .projectDeepDive }
-        }
-
-        // 4. Algorithmic Engineering Keywords
-        let codingKeywords = [
-            "def ", "class ", "function", "public static void", "vector<", "return ",
-            "leetcode", "workspace", "given an array", "two sum", "binary tree",
-            "dynamic programming", "time complexity", "space complexity", "constraints:",
-            "example 1:", "test case", "stdin", "stdout", "hash map", "two pointers"
-        ]
-        var codingScore = 0
-        for kw in codingKeywords {
-            if combined.contains(kw) { codingScore += 1 }
-        }
-
-        if systemScore > codingScore {
-            return .systemDesign
-        } else if codingScore > 0 {
-            return .coding
-        }
-
         return currentMode
     }
 
@@ -539,6 +446,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         Inspect the existing code currently in CoderPad. You MUST preserve the candidate's existing algorithmic strategy, data structures, and variable naming conventions. Expand or patch the current code. NEVER pivot to an entirely different algorithmic paradigm unless explicitly instructed by the interviewer's speech.
         """
 
+        if solveCount > 0 {
+            return """
+            \(baseInstructions)
+
+            FOLLOW-UP / AMENDMENT TO PREVIOUS SOLUTION:
+            The interviewer just provided an update, new constraint, or follow-up question.
+            INTERVIEWER UPDATE (Spoken): "\(spokenInput)"
+            CURRENT CODERPAD STATE (Screen OCR):
+            \(screenContext)
+
+            TASK:
+            1. Address the interviewer's new constraint or question directly.
+            2. If code needs to be adjusted, provide ONLY the specific modified function or patch matching their change.
+            3. If they asked a conceptual/trade-off question, provide concise verbal talking points. Do not rewrite unchanged code.
+            """
+        }
+
         switch currentMode {
         case .coding:
             return """
@@ -550,12 +474,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             CURRENT SCREEN CODE BUFFER (OCR from Workspace/IDE):
             \(screenContext)
 
-            OUTPUT EXACTLY IN THIS DUAL-TIER FORMAT:
-            ### 1. TALKING POINTS & CONCEPTUAL REASONING (Verbatim to speak aloud)
-            2 to 3 natural sentences explaining the approach, trade-offs, and Big-O time/space complexity.
+            NEGATIVE CONSTRAINT:
+            IGNORE real-world enterprise architectures, Kafka, Neo4j, or microservices from ContextVault.md. Focus strictly and exclusively on the algorithmic problem, data structures, and the code at hand.
 
-            ### 2. EXACT CODE IMPLEMENTATION / PATCH
-            Clean Python 3 code matching CoderPad `main.py`. If the interviewer only asked a conceptual question, output: "No code changes needed—verbal answer only."
+            OUTPUT EXACTLY IN THIS FORMAT:
+            ### 1. WHAT TO SAY ALOUD RIGHT NOW
+            2 to 3 natural sentences for immediate verbal delivery: restate the problem concisely, ask 2 critical edge cases to validate assumptions, and pitch the brute force vs. optimal approach with Big-O intuition.
+
+            ### 2. EXACT PYTHON 3 IMPLEMENTATION
+            Minimal, production-grade Python 3 code matching CoderPad `main.py`. Anchor strictly to candidate's existing variable names, function signatures, and data structures visible in the screen buffer. If only a verbal question was asked, output: "No code changes needed—verbal answer only."
+
+            ### 3. TIME & SPACE COMPLEXITY
+            State the exact Time Complexity and Space Complexity with a 1-sentence mathematical justification.
             """
 
         case .systemDesign:
@@ -569,78 +499,166 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             \(screenContext)
 
             OUTPUT EXACTLY IN THIS TECHNICAL BRIEFING FORMAT:
-            ### 1. ARCHITECTURAL SCOPE & SLA (Verbatim Opener — Read out loud)
-            2 to 3 sentences clarifying scale constraints (QPS/TPS, p99 latency SLA), state requirements, and primary bottleneck.
+            ### 1. ARCHITECTURAL SCOPE & CAPACITY ESTIMATES (Verbatim Opener — Read out loud)
+            2 to 3 sentences establishing core capacity estimates (QPS/TPS, read/write ratio, bandwidth, storage over 5 years) and latency SLAs (p99 < 20ms).
 
-            ### 2. MONOSPACE ASCII ARCHITECTURE (Optimized for Excalidraw)
-            Clean ASCII diagram using standard box characters (+, -, |, >) that maps directly into Excalidraw shapes:
-            [Client] --> [API Gateway] --> [Service] --> [Kafka/DB]
+            ### 2. MONOSPACE ASCII ARCHITECTURE (Optimized for Excalidraw / Whiteboard)
+            Clean, copy-pasteable monospace ASCII diagram using standard box characters (+, -, |, >) designed to be drawn directly onto an Excalidraw or whiteboard canvas:
+            [Client] --> [API Gateway / LB] --> [Microservice Cluster] --> [Cache / DB Shards]
 
-            ### 3. KEY ARCHITECTURAL TRADEOFFS & NUMBERS
-            - Storage & Partitioning Strategy: Sharding key and replication topology.
-            - Caching & Ingestion Strategy: Write-through vs. write-back, Redis evictions.
-            - Failure Recovery: Backpressure, split-brain mitigation, idempotency.
+            ### 3. CORE SUBSYSTEMS & DISTRIBUTED TRADEOFFS
+            - Storage & Sharding Keys: Partition key selection, hot-partition mitigation, replication & consensus topology.
+            - Caching Strategy: Cache-aside vs. write-through, eviction policy (TTL/LRU), cache stampede mitigation.
+            - Failure Modes & Resilience: Backpressure, circuit breakers, idempotency keys, split-brain recovery.
 
             ### 4. ARCHITECTURAL EXPLORATION (1 sentence)
-            A natural prompt to explore distributed systems deep dives with the team.
-            """
-
-        case .projectDeepDive:
-            return """
-            \(baseInstructions)
-
-            PROJECT RETROSPECTIVE QUERY:
-            "\(spokenInput)"
-
-            OUTPUT EXACTLY IN THIS TECHNICAL BRIEFING FORMAT:
-            ### 1. DIRECT TECHNICAL ANSWER (Verbatim Script — Read out loud)
-            2 to 3 sentences directly answering the question, anchoring on the exact project from my ground truth (Project A, B, or C), and quoting real scale ($40M+ wire fraud, 10M+ sessions, or 50k+ TPS).
-
-            ### 2. MONOSPACE ASCII ARCHITECTURE (If architecture/flow asked, output exact ASCII diagram from ContextVault)
-            If the question asks about architecture, system components, or Excalidraw flow, output the clean monospace ASCII topology from ContextVault. Otherwise, provide a 1-sentence summary of the component boundaries.
-
-            ### 3. TECHNICAL MECHANISMS & TRADE-OFFS (Bullet points to speak through)
-            - How it worked under the hood (mention MCP, Neo4j GraphRAG, FSMs, Redis, H3, Kafka, or PSI).
-            - The specific production incident, scalability crisis, or architectural veto.
-            - The engineering trade-off accepted.
-
-            ### 4. PROACTIVE TECHNICAL DIRECTION
-            1 follow-up question to steer the discussion deeper into an area of strength.
+            A natural Staff-level prompt to proactively explore deep architectural trade-offs with the interviewer.
             """
 
         case .behavioral:
             return """
             \(baseInstructions)
 
-            LEADERSHIP & ENGINEERING INCIDENT QUERY:
+            LEADERSHIP & BEHAVIORAL QUERY:
             "\(spokenInput)"
 
+            OUTPUT EXACTLY IN THIS STRUCTURED STAR FORMAT:
+            ### 1. SITUATION & TASK (20s - Verbatim Script to speak aloud)
+            Concise high-stakes business crisis, severe technical constraint, or engineering leadership conflict.
+
+            ### 2. LEADERSHIP ACTIONS TAKEN (40s - Verbatim Script to speak aloud)
+            Exactly 3 concrete engineering leadership actions I personally spearheaded (e.g., architectural veto, cross-functional consensus building, unblocking critical path).
+
+            ### 3. QUANTIFIED BUSINESS RESULTS (15s - Verbatim Script to speak aloud)
+            Concrete business impact, dollar revenue protected, fraud loss reduction, or infrastructure cost savings achieved.
+            """
+
+        case .projectDeepDive:
+            return """
+            \(baseInstructions)
+
+            PAST PROJECT RETROSPECTIVE QUERY:
+            "\(spokenInput)"
+
+            SCREEN CONTEXT:
+            \(screenContext)
+
+            ANCHORING MANDATE:
+            Anchor strictly on ground truth projects from ContextVault.md (e.g., Socure, HyperRoute, Capital One, T-Mobile). Quoting real verified scale ($40M+ wire fraud prevented, 10M+ sessions, 50k+ TPS).
+
             OUTPUT EXACTLY IN THIS TECHNICAL BRIEFING FORMAT:
-            ### 1. EXECUTIVE RETROSPECTIVE (Verbatim STAR Story — Read out loud)
-            - Situation & Task (20s): High-stakes business crisis, scale constraint, and technical conflict.
-            - Actions Taken (40s): 3 specific engineering leadership actions I executed (design, veto, or cross-team alignment).
-            - Quantified Results (15s): Concrete metrics, cost reduction, or incident prevention achieved.
+            ### 1. DIRECT TECHNICAL ANSWER (Verbatim Script — Read out loud)
+            2 to 3 sentences directly answering the question, anchoring on the exact project from ground truth, and quoting real-world scale and production metrics.
+
+            ### 2. MONOSPACE ASCII ARCHITECTURE (Past Project Topology)
+            If asked to draw or explain architecture: provide the clean monospace ASCII system topology of the past project from ContextVault.md. Otherwise, provide a 1-sentence summary of the component boundaries.
+
+            ### 3. TECHNICAL MECHANISMS, TRADE-OFFS & PRODUCTION INCIDENTS
+            - Under-the-Hood Mechanisms: Exactly how it functioned (e.g., FSM engine, Neo4j GraphRAG, H3 spatial indexing, Kafka event streams, Redis cache).
+            - Production Incident Overcome: The specific scalability crisis, high-stakes failure, or architectural bottleneck faced and how I engineered the resolution.
+            - Accepted Engineering Trade-Off: Explicit trade-off accepted (CAP theorem balance, latency vs. consistency, compute vs. memory).
+
+            ### 4. PROACTIVE TECHNICAL DIRECTION
+            1 follow-up question to steer the interviewer deeper into an area of strength.
             """
         }
     }
 
-    // Manual OCR Snapshot (Option + O)
-    func runOCR() {
-        Task {
-            let text = await captureScreenText()
-            guard !text.isEmpty else { return }
+    // Option + S : Start Session Recording (Listening & Watching with 5s Pre-Roll)
+    func startSessionRecording() {
+        isSessionRecording = true
+        audioQueue.sync {
+            audioSamples = preRollBuffer
+            preRollBuffer.removeAll()
+            speechDuration = Double(audioSamples.count) / 16000.0
+            silenceDuration = 0
+        }
 
-            lastScreenText = text
+        // Invalidate/stop any active Gemini DOM generation
+        let stopJs = """
+        (()=>{
+            const stopBtn = document.querySelector('button[aria-label*="Stop"], button[aria-label*="stop"], [data-test-id="stop-button"]');
+            if (stopBtn && !stopBtn.disabled) stopBtn.click();
+        })();
+        """
+        webView.evaluateJavaScript(stopJs, completionHandler: nil)
 
-            let detected = classifyContext(spokenText: "", screenText: text)
-            if detected != currentMode {
-                currentMode = detected
-                DispatchQueue.main.async { self.updateBorder() }
+        Task { @MainActor in
+            let baseline = await self.captureScreenText()
+            if !baseline.isEmpty {
+                self.lastScreenText = baseline
+            }
+        }
+        self.updateBorder()
+        print("🎙️ Session Recording STARTED (Listening & Watching)...")
+    }
+
+    // Option + Return : Stop Session & Solve (or Direct Single-Shot OCR if not recording)
+    func stopSessionAndSolve() {
+        guard isSessionRecording else {
+            print("⚡ Single-Shot Direct OCR Triggered (No Active Recording Session)...")
+            Task { @MainActor in
+                let screenText = await self.captureScreenText()
+                if !screenText.isEmpty { self.lastScreenText = screenText }
+                let finalScreen = screenText.isEmpty ? self.lastScreenText : screenText
+                let prompt = self.buildPrompt(spokenInput: self.questionBuffer, screenContext: finalScreen)
+                self.sendToGemini(prompt)
+                self.solveCount += 1
+            }
+            return
+        }
+
+        isSessionRecording = false
+        self.updateBorder()
+        print("🚀 Session Recording STOPPED. Solving with full audio + screen context...")
+
+        var samplesToProcess: [Float] = []
+        audioQueue.sync {
+            samplesToProcess = self.audioSamples
+            self.audioSamples.removeAll()
+            self.speechDuration = 0
+            self.silenceDuration = 0
+        }
+
+        let samples = samplesToProcess
+        Task { @MainActor in
+            // Simultaneously run Whisper on accumulated audio and capture final screen OCR
+            async let whisperTask: String = Task.detached(priority: .userInitiated) { () -> String in
+                if samples.count >= 3200 {
+                    return AppDelegate.transcribeSamples(samples)
+                } else {
+                    return ""
+                }
+            }.value
+
+            async let screenTask = self.captureScreenText()
+
+            let (transcribedSpeech, finalScreenText) = await (whisperTask, screenTask)
+
+            if !transcribedSpeech.isEmpty {
+                self.questionBuffer = transcribedSpeech
+                print("🎯 Audio Query Transcribed: \"\(transcribedSpeech)\"")
             }
 
-            let prompt = buildPrompt(spokenInput: "", screenContext: text)
-            DispatchQueue.main.async { self.sendToGemini(prompt) }
+            if !finalScreenText.isEmpty {
+                self.lastScreenText = finalScreenText
+            }
+
+            let spoken = transcribedSpeech.isEmpty ? self.questionBuffer : transcribedSpeech
+            let screenContext = finalScreenText.isEmpty ? self.lastScreenText : finalScreenText
+
+            let prompt = self.buildPrompt(spokenInput: spoken, screenContext: screenContext)
+            self.sendToGemini(prompt)
+            self.solveCount += 1
         }
+    }
+
+    // Option + O : Clean Quit Application
+    func cleanQuit() {
+        print("🛑 CortexGlass Exiting Cleanly.")
+        audioStream?.stopCapture(completionHandler: nil)
+        try? FileManager.default.removeItem(atPath: lockPath)
+        exit(0)
     }
 
     // DOM Injector & Form Submitter
@@ -652,7 +670,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     }
 
     // ========================================================================
-    // 9. Carbon Hotkeys & Swallowing Engine (Streamlined to 4 Essential Hotkeys)
+    // 9. Carbon Hotkeys & Swallowing Engine (Deterministic Controls & Modes)
     // ========================================================================
     func setupHotkeys() {
         var s = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -666,35 +684,50 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
 
         let opt = UInt32(optionKey)
 
-        // 4 Essential Hotkeys:
-        // 1. Option + O : Manual Screen OCR Snapshot
-        // 2. Option + Z : Stealth HUD Visibility Toggle
-        // 3. Option + I : Interactive Click-Through Toggle
-        // 4. Option + R : Silent Round & Memory Reset
+        // Core Hotkeys:
+        // Option + S      : Start Session Recording (Listening & Watching)
+        // Option + Return : Stop Session & Solve (Whisper + Vision + Gemini)
+        // Option + 1      : Switch to Coding / DSA [DEFAULT]
+        // Option + 2      : Switch to System Design (ASCII & Scaled Architecture)
+        // Option + 3      : Switch to Leadership & Behavioral (STAR Method)
+        // Option + 4      : Switch to Past Project Retrospective & System Architecture
+        // Option + O      : Clean Quit Application (exit(0))
+        // Option + Z      : Stealth HUD Visibility Toggle (Alpha 0.0 <-> 1.0)
+        // Option + I      : Interactive Mouse Toggle (Click-through pass-through <-> Scrollable HUD)
+        // Option + R      : Reset Session Buffers & Clear Chat
         let binds: [(UInt32, Int)] = [
-            (1, kVK_ANSI_O), // Option + O
-            (2, kVK_ANSI_Z), // Option + Z
-            (3, kVK_ANSI_I), // Option + I
-            (4, kVK_ANSI_R)  // Option + R
+            (1, kVK_ANSI_S), // Option + S : Start Session Recording
+            (2, kVK_Return), // Option + Return : Stop Session & Solve
+            (3, kVK_ANSI_1), // Option + 1 : Coding / DSA (Default)
+            (4, kVK_ANSI_2), // Option + 2 : System Design
+            (5, kVK_ANSI_3), // Option + 3 : Leadership & Behavioral
+            (6, kVK_ANSI_4), // Option + 4 : Past Project Retrospective
+            (7, kVK_ANSI_O), // Option + O : Clean Quit Application
+            (8, kVK_ANSI_Z), // Option + Z : Stealth HUD Toggle
+            (9, kVK_ANSI_I), // Option + I : Interactive Mouse Toggle
+            (10, kVK_ANSI_R) // Option + R : Reset Session Buffers & Clear Chat
         ]
         for (id, code) in binds {
             var ref: EventHotKeyRef?
             RegisterEventHotKey(UInt32(code), opt, EventHotKeyID(signature: OSType(0x5350), id: id), GetApplicationEventTarget(), 0, &ref)
         }
 
-        // Active key suppression matrix to swallow all other Option + key chords.
+        // Active key suppression matrix to swallow all remaining Option + key chords.
         // Prevents dead-key symbol leaks into external code editors (CoderPad).
-        // Preserves Option + Left/Right arrows for native word navigation.
+        // Preserves Option + Left/Right/Up/Down arrows for native cursor navigation.
         let swallow = [
-            kVK_ANSI_A, kVK_ANSI_B, kVK_ANSI_C, kVK_ANSI_D, kVK_ANSI_E, kVK_ANSI_F,
-            kVK_ANSI_G, kVK_ANSI_H, kVK_ANSI_J, kVK_ANSI_K, kVK_ANSI_L, kVK_ANSI_M,
-            kVK_ANSI_N, kVK_ANSI_P, kVK_ANSI_Q, kVK_ANSI_S, kVK_ANSI_T, kVK_ANSI_U,
-            kVK_ANSI_V, kVK_ANSI_W, kVK_ANSI_X, kVK_ANSI_Y,
-            kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4,
-            kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9,
-            kVK_ANSI_Equal, kVK_ANSI_Minus, kVK_ANSI_LeftBracket, kVK_ANSI_RightBracket,
-            kVK_ANSI_Semicolon, kVK_ANSI_Slash, kVK_ANSI_Quote, kVK_ANSI_Comma,
-            kVK_ANSI_Period, kVK_ANSI_Grave, kVK_ANSI_Backslash
+            kVK_ANSI_A, kVK_ANSI_B, kVK_ANSI_C, kVK_ANSI_D,
+            kVK_ANSI_E, kVK_ANSI_F, kVK_ANSI_G, kVK_ANSI_H,
+            kVK_ANSI_J, kVK_ANSI_K, kVK_ANSI_L, kVK_ANSI_M,
+            kVK_ANSI_N, kVK_ANSI_P, kVK_ANSI_Q, kVK_ANSI_T,
+            kVK_ANSI_U, kVK_ANSI_V, kVK_ANSI_W, kVK_ANSI_X,
+            kVK_ANSI_Y,
+            kVK_ANSI_0, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7,
+            kVK_ANSI_8, kVK_ANSI_9,
+            kVK_ANSI_Equal, kVK_ANSI_Minus, kVK_ANSI_LeftBracket,
+            kVK_ANSI_RightBracket, kVK_ANSI_Semicolon, kVK_ANSI_Slash,
+            kVK_ANSI_Quote, kVK_ANSI_Comma, kVK_ANSI_Period,
+            kVK_ANSI_Grave, kVK_ANSI_Backslash
         ]
         for code in swallow {
             var ref: EventHotKeyRef?
@@ -704,10 +737,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
 
     func handleKey(_ id: UInt32) {
         switch id {
-        case 1: runOCR()                                               // Option + O : Manual Screen OCR Snapshot
-        case 2: panel.alphaValue = panel.alphaValue > 0 ? 0 : opacity   // Option + Z : Stealth HUD Visibility Toggle
-        case 3: toggleInteractive()                                    // Option + I : Interactive Click-Through Toggle
-        case 4: resetRound()                                           // Option + R : Silent Round & Memory Reset
+        case 1: startSessionRecording()
+        case 2: stopSessionAndSolve()
+        case 3: switchMode(.coding)
+        case 4: switchMode(.systemDesign)
+        case 5: switchMode(.behavioral)
+        case 6: switchMode(.projectDeepDive)
+        case 7: cleanQuit()
+        case 8: panel.alphaValue = panel.alphaValue > 0 ? 0 : opacity
+        case 9: toggleInteractive()
+        case 10: resetRound()
         default: break
         }
     }
