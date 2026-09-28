@@ -398,14 +398,14 @@ class BiometricTyper {
 }
 
 // ============================================================================
-// 6. Spatial Split-Pane OCR & Sliding Overlap Deduplicator
+// 6. Unified Full-Desktop OCR & Sliding Overlap Deduplicator
 // ============================================================================
 class SpatialOCRManager {
     static let shared = SpatialOCRManager()
-    private var accumulatedProblemLines: [String] = []
-    func reset() { accumulatedProblemLines.removeAll() }
+    private var accumulatedScreenLines: [String] = []
+    func reset() { accumulatedScreenLines.removeAll() }
 
-    func captureSplitScreen() async -> (problemText: String, editorText: String)? {
+    func captureFullScreen() async -> String? {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             guard let display = content.displays.first else { return nil }
@@ -422,15 +422,14 @@ class SpatialOCRManager {
             try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
             guard let results = request.results, !results.isEmpty else { return nil }
 
-            var leftObs: [(text: String, box: CGRect)] = [], rightObs: [(text: String, box: CGRect)] = []
-            for obs in results {
-                guard let text = obs.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { continue }
-                if obs.boundingBox.midX <= 0.52 { leftObs.append((text, obs.boundingBox)) }
-                else { rightObs.append((text, obs.boundingBox)) }
+            let sortedLines = results.compactMap { obs -> (text: String, box: CGRect)? in
+                guard let text = obs.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+                return (text, obs.boundingBox)
             }
+            .sorted { $0.box.midY > $1.box.midY }
+            .map { $0.text }
 
-            let sortLines = { (obs: [(text: String, box: CGRect)]) in obs.sorted { $0.box.midY > $1.box.midY }.map { $0.text } }
-            return (problemText: stitchScrollBuffer(incomingLines: sortLines(leftObs)), editorText: sortLines(rightObs).joined(separator: "\n"))
+            return stitchScrollBuffer(incomingLines: sortedLines)
         } catch {
             print("❌ OCR Error: \(error.localizedDescription)")
             return nil
@@ -438,26 +437,26 @@ class SpatialOCRManager {
     }
 
     private func stitchScrollBuffer(incomingLines: [String]) -> String {
-        guard !incomingLines.isEmpty else { return accumulatedProblemLines.joined(separator: "\n") }
-        if accumulatedProblemLines.isEmpty { accumulatedProblemLines = incomingLines; return incomingLines.joined(separator: "\n") }
+        guard !incomingLines.isEmpty else { return accumulatedScreenLines.joined(separator: "\n") }
+        if accumulatedScreenLines.isEmpty { accumulatedScreenLines = incomingLines; return incomingLines.joined(separator: "\n") }
 
-        let existing = Set(accumulatedProblemLines.joined(separator: " ").lowercased().components(separatedBy: .whitespacesAndNewlines))
+        let existing = Set(accumulatedScreenLines.joined(separator: " ").lowercased().components(separatedBy: .whitespacesAndNewlines))
         let incoming = Set(incomingLines.joined(separator: " ").lowercased().components(separatedBy: .whitespacesAndNewlines))
         let ratio = Double(existing.intersection(incoming).count) / Double(max(1, incoming.count))
         if ratio < 0.12 && incomingLines.count > 6 {
-            print("🔄 Divergence detected: Fresh problem statement loaded. Flushing buffer.")
-            accumulatedProblemLines = incomingLines; return incomingLines.joined(separator: "\n")
+            print("🔄 Divergence detected: Fresh screen context loaded. Flushing buffer.")
+            accumulatedScreenLines = incomingLines; return incomingLines.joined(separator: "\n")
         }
 
-        let maxMatch = min(accumulatedProblemLines.count, incomingLines.count, 10)
+        let maxMatch = min(accumulatedScreenLines.count, incomingLines.count, 10)
         var matchCount = 0
         for count in stride(from: maxMatch, through: 2, by: -1) {
-            let buf = accumulatedProblemLines.suffix(count).map { $0.trimmingCharacters(in: .whitespaces) }
+            let buf = accumulatedScreenLines.suffix(count).map { $0.trimmingCharacters(in: .whitespaces) }
             let inc = incomingLines.prefix(count).map { $0.trimmingCharacters(in: .whitespaces) }
             if Array(buf) == Array(inc) { matchCount = count; break }
         }
-        accumulatedProblemLines.append(contentsOf: incomingLines.dropFirst(matchCount))
-        return accumulatedProblemLines.joined(separator: "\n")
+        accumulatedScreenLines.append(contentsOf: incomingLines.dropFirst(matchCount))
+        return accumulatedScreenLines.joined(separator: "\n")
     }
 }
 
@@ -478,38 +477,34 @@ class GeminiRESTClient {
         return nil
     }
 
-    func requestSolution(problem: String, starterCode: String) async throws -> String {
+    func requestSolution(screenText: String) async throws -> String {
         let prompt = """
         You are an elite competitive programmer in an automated assessment.
-        PROBLEM:
-        \(problem)
-        STARTER CODE:
-        \(starterCode)
+        FULL DESKTOP / SCREEN CONTEXT (Problem statement, code editor, and visible constraints):
+        \(screenText)
+
         TASK:
-        1. Write the optimal, clean, complete implementation to solve all test cases (time/space optimal).
-        2. Return ONLY the raw executable code body to place inside the function or starter template.
-        3. Do NOT wrap output in markdown fences (```). Do NOT re-declare outer signatures.
-        4. For indented languages (especially Python), prefix code with 4-space base indentation for line 0 and all subsequent lines.
+        1. Parse the problem, function signature, and starter code from the screen context.
+        2. Write the optimal, clean, complete implementation to solve all test cases (time/space optimal).
+        3. Return ONLY the raw executable code body to place inside the function or starter template.
+        4. Do NOT wrap output in markdown fences (```). Do NOT re-declare outer signatures.
+        5. For indented languages (especially Python), prefix code with 4-space base indentation for line 0 and all subsequent lines.
         """
         return try await executeGeminiRequest(prompt: prompt)
     }
 
-    func requestDiagnosticAssistance(problem: String, currentCode: String, testConsoleOutput: String) async throws -> String {
+    func requestDiagnosticAssistance(screenText: String, previousSolution: String = "") async throws -> String {
         let prompt = """
         You are an expert competitive programming debugger.
-        Analyze the problem, the candidate's current code, and the test failure console output.
-        PROBLEM:
-        \(problem)
+        Analyze the full desktop screen context containing the problem description, the candidate's current code, test cases, and test failure / error console output.
 
-        CURRENT CANDIDATE CODE:
-        \(currentCode)
-
-        TEST FAILURE / CONSOLE OUTPUT:
-        \(testConsoleOutput)
+        FULL SCREEN CONTEXT:
+        \(screenText)
+        \(previousSolution.isEmpty ? "" : "\nPREVIOUSLY GENERATED CODE:\n" + previousSolution)
 
         TASK:
         Provide:
-        1. BUG DIAGNOSIS: 1-2 concise bullet points identifying the exact flaw (off-by-one, type mismatch, edge case).
+        1. BUG DIAGNOSIS: 1-2 concise bullet points identifying the exact flaw (off-by-one, type mismatch, edge case, failed test case).
         2. COMPLETE CORRECTED CODE: Pure production code snippet ready to be applied.
         3. EXPLANATION: 1 sentence on why this fix resolves the failed test case.
         4. EDGE CASES: 1-2 key edge cases to watch out for.
@@ -597,6 +592,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var pillView: PillContentView!
     var diagnosticPanel: SpatialPanel!
     var diagnosticWebView: WKWebView!
+    var currentOpacity: CGFloat = 0.95
     var lastProblemText = "", lastGeneratedCode = "", lastStarterCode = ""
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -637,11 +633,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             RegisterEventHotKey(UInt32(code), opt, EventHotKeyID(signature: OSType(0x5356), id: id), GetApplicationEventTarget(), 0, &ref)
         }
 
-        let binds: [Int] = [kVK_ANSI_S, kVK_ANSI_T, kVK_ANSI_Z, kVK_ANSI_I, kVK_ANSI_R, kVK_ANSI_X, kVK_ANSI_Q]
-        for (i, code) in binds.enumerated() { regHK(code, UInt32(i + 1)) }
-        let candidateSwallows = [0...9, 11...32, 34...35, 37...47, 50...50].flatMap { $0 }
-        let activeSet = Set(binds)
-        for c in candidateSwallows where !activeSet.contains(c) { regHK(c, 9999) }
+        let binds: [(UInt32, Int)] = [
+            (1, kVK_ANSI_S),             // Option + S : Solve & Type
+            (2, kVK_ANSI_T),             // Option + T : Diagnose Test Console Drawer
+            (3, kVK_ANSI_Z),             // Option + Z : Stealth Visibility Toggle
+            (4, kVK_ANSI_I),             // Option + I : Interactive Mouse Toggle
+            (5, kVK_ANSI_LeftBracket),   // Option + [ : Scale HUD Down (0.90x)
+            (6, kVK_ANSI_RightBracket),  // Option + ] : Scale HUD Up (1.10x)
+            (7, kVK_ANSI_Minus),         // Option + - : Decrease Opacity (-0.10)
+            (8, kVK_ANSI_Equal),         // Option + = : Increase Opacity (+0.10)
+            (9, kVK_DownArrow),          // Option + Down : Scroll Content Down (+350px)
+            (10, kVK_UpArrow),           // Option + Up : Scroll Content Up (-350px)
+            (11, kVK_ANSI_R),            // Option + R : Reset Buffers & State to IDLE
+            (12, kVK_ANSI_X),            // Option + X : Panic Abort
+            (13, kVK_ANSI_Q)             // Option + Q : Clean Quit
+        ]
+        for (id, code) in binds { regHK(code, id) }
+
+        // Candidate swallow list covering all dead-key producing chords
+        // Preserves native navigation (Option + Left/Right Arrow) by excluding them
+        let allCandidateKeys: [Int] = [
+            kVK_ANSI_A, kVK_ANSI_B, kVK_ANSI_C, kVK_ANSI_D, kVK_ANSI_E, kVK_ANSI_F, kVK_ANSI_G, kVK_ANSI_H,
+            kVK_ANSI_I, kVK_ANSI_J, kVK_ANSI_K, kVK_ANSI_L, kVK_ANSI_M, kVK_ANSI_N, kVK_ANSI_O, kVK_ANSI_P,
+            kVK_ANSI_Q, kVK_ANSI_R, kVK_ANSI_S, kVK_ANSI_T, kVK_ANSI_U, kVK_ANSI_V, kVK_ANSI_W, kVK_ANSI_X,
+            kVK_ANSI_Y, kVK_ANSI_Z,
+            kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7,
+            kVK_ANSI_8, kVK_ANSI_9,
+            kVK_ANSI_Equal, kVK_ANSI_Minus, kVK_ANSI_LeftBracket, kVK_ANSI_RightBracket,
+            kVK_ANSI_Semicolon, kVK_ANSI_Slash, kVK_ANSI_Quote, kVK_ANSI_Comma, kVK_ANSI_Period,
+            kVK_ANSI_Grave, kVK_ANSI_Backslash
+        ]
+        let activeSet = Set(binds.map { $0.1 })
+        for code in allCandidateKeys where !activeSet.contains(code) {
+            regHK(code, 9999)
+        }
     }
 
     func handleHotkey(_ id: UInt32) {
@@ -650,36 +675,109 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case 2: triggerDiagnosticPipeline()
         case 3: toggleOverlayVisibility()
         case 4: toggleOverlayInteractivity()
-        case 5: resetAll()
-        case 6: panicAbort()
-        case 7: exit(0)
+        case 5: scaleOverlay(0.90)
+        case 6: scaleOverlay(1.10)
+        case 7: adjustOpacity(-0.10)
+        case 8: adjustOpacity(+0.10)
+        case 9: scrollOverlay(delta: 350)
+        case 10: scrollOverlay(delta: -350)
+        case 11: resetAll()
+        case 12: panicAbort()
+        case 13: cleanQuit()
         default: break
         }
     }
 
     func handleProgressState(_ state: PillState) { pillView.applyState(state) }
 
-    private func captureScreenOrReportError() async -> (problemText: String, editorText: String)? {
-        guard let split = await SpatialOCRManager.shared.captureSplitScreen() else {
+    func scrollOverlay(delta: Int) {
+        let script = "window.scrollBy({top: \(delta), behavior: 'smooth'});"
+        diagnosticWebView.evaluateJavaScript(script, completionHandler: nil)
+        print("📜 Scrolled Spatial HUD \(delta > 0 ? "Down" : "Up") (\(delta)px)")
+    }
+
+    func scaleOverlay(_ factor: CGFloat) {
+        guard let screen = diagnosticPanel.screen ?? NSScreen.main else { return }
+        let s = screen.visibleFrame
+        let f = diagnosticPanel.frame
+
+        let targetW = f.width * factor
+        let targetH = f.height * factor
+
+        let maxW = s.width * 0.75
+        let maxH = s.height * 0.92
+        let minW: CGFloat = 340
+        let minH: CGFloat = 380
+
+        let clampedW = min(maxW, max(minW, targetW))
+        let clampedH = min(maxH, max(minH, targetH))
+
+        // Anchor to top-right corner (f.maxX, f.maxY)
+        let newX = f.maxX - clampedW
+        let newY = f.maxY - clampedH
+        let newFrame = NSRect(x: newX, y: newY, width: clampedW, height: clampedH)
+
+        diagnosticPanel.setFrame(newFrame, display: true, animate: false)
+        print("📐 Scaled Spatial HUD: \(Int(clampedW))x\(Int(clampedH))")
+    }
+
+    func adjustOpacity(_ delta: CGFloat) {
+        currentOpacity = min(1.0, max(0.20, currentOpacity + delta))
+        diagnosticPanel.alphaValue = currentOpacity
+        if diagnosticPanel.alphaValue > 0.05 {
+            diagnosticPanel.orderFront(nil)
+        }
+        print("🌓 Spatial HUD Opacity: \(Int(currentOpacity * 100))%")
+    }
+
+    func toggleOverlayVisibility() {
+        let isVisible = diagnosticPanel.alphaValue > 0.05
+        if isVisible {
+            diagnosticPanel.alphaValue = 0.0
+        } else {
+            diagnosticPanel.alphaValue = currentOpacity
+            diagnosticPanel.orderFront(nil)
+        }
+        print("👁️ Spatial HUD Visibility: \(!isVisible ? "VISIBLE (\(Int(currentOpacity * 100))%)" : "HIDDEN")")
+    }
+
+    func toggleOverlayInteractivity() {
+        diagnosticPanel.isInteractive.toggle()
+        diagnosticPanel.ignoresMouseEvents = !diagnosticPanel.isInteractive
+        if diagnosticPanel.isInteractive {
+            NSApp.activate(ignoringOtherApps: true)
+            diagnosticPanel.makeKeyAndOrderFront(nil)
+            diagnosticPanel.contentView?.layer?.borderColor = NSColor.white.cgColor
+            diagnosticPanel.contentView?.layer?.borderWidth = 2.5
+        } else {
+            diagnosticPanel.resignKey()
+            diagnosticPanel.contentView?.layer?.borderColor = NSColor(red: 0.15, green: 0.85, blue: 0.95, alpha: 0.85).cgColor
+            diagnosticPanel.contentView?.layer?.borderWidth = 2.0
+        }
+        print("🖱️ Spatial HUD Interactivity: \(diagnosticPanel.isInteractive ? "ENABLED (Clicks Accepted)" : "DISABLED (Pass-Through)")")
+    }
+
+    private func captureScreenOrReportError() async -> String? {
+        guard let text = await SpatialOCRManager.shared.captureFullScreen() else {
             await MainActor.run { self.pillView.applyState(.error("OCR FAILED")) }
             return nil
         }
-        return split
+        return text
     }
 
     func triggerSolvePipeline() {
         pillView.applyState(.analyzing)
         Task { [weak self] in
-            guard let self = self, let split = await self.captureScreenOrReportError() else { return }
-            self.lastProblemText = split.problemText; self.lastStarterCode = split.editorText
-            print("⚡ Problem Analyzed (\(split.problemText.count) chars). Calling Gemini REST...")
+            guard let self = self, let screenText = await self.captureScreenOrReportError() else { return }
+            self.lastProblemText = screenText
+            print("⚡ Problem & Screen Analyzed (\(screenText.count) chars). Calling Gemini REST...")
 
             do {
-                let code = try await GeminiRESTClient.shared.requestSolution(problem: split.problemText, starterCode: split.editorText)
+                let code = try await GeminiRESTClient.shared.requestSolution(screenText: screenText)
                 self.lastGeneratedCode = code
                 print("🎯 Optimal Code Generated (\(code.count) chars). Beginning Biometric Typing...")
                 await MainActor.run {
-                    BiometricTyper.shared.typeCode(code, starterCode: split.editorText) { [weak self] state in
+                    BiometricTyper.shared.typeCode(code, starterCode: screenText) { [weak self] state in
                         self?.handleProgressState(state)
                     }
                 }
@@ -699,21 +797,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         pillView.applyState(.evaluating)
 
         Task { [weak self] in
-            guard let self = self, let split = await self.captureScreenOrReportError() else { return }
-            self.lastStarterCode = split.editorText
-            print("🔍 Diagnosing Test Console Drawer (\(split.editorText.count) chars)...")
+            guard let self = self, let screenText = await self.captureScreenOrReportError() else { return }
+            print("🔍 Diagnosing Screen & Test Console Drawer (\(screenText.count) chars)...")
 
             do {
                 let diagnosticHTML = try await GeminiRESTClient.shared.requestDiagnosticAssistance(
-                    problem: self.lastProblemText.isEmpty ? split.problemText : self.lastProblemText,
-                    currentCode: self.lastGeneratedCode.isEmpty ? split.editorText : self.lastGeneratedCode,
-                    testConsoleOutput: split.editorText
+                    screenText: screenText,
+                    previousSolution: self.lastGeneratedCode
                 )
                 let formattedHTML = GeminiRESTClient.shared.formatDiagnosticHTML(diagnosticHTML)
 
                 await MainActor.run {
                     self.diagnosticWebView.loadHTMLString(formattedHTML, baseURL: nil)
-                    self.diagnosticPanel.alphaValue = 1.0
+                    self.diagnosticPanel.alphaValue = self.currentOpacity
                     self.diagnosticPanel.orderFront(nil)
                     self.pillView.applyState(.diagnosticReady)
                     print("✨ Diagnostic Analysis Rendered to Spatial HUD.")
@@ -723,29 +819,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 await MainActor.run { self.pillView.applyState(.error("DIAG ERROR")) }
             }
         }
-    }
-
-    func toggleOverlayVisibility() {
-        let isVisible = diagnosticPanel.alphaValue > 0.05
-        diagnosticPanel.alphaValue = isVisible ? 0.0 : 1.0
-        if !isVisible { diagnosticPanel.orderFront(nil) }
-        print("👁️ Spatial HUD Visibility: \(!isVisible ? "VISIBLE" : "HIDDEN")")
-    }
-
-    func toggleOverlayInteractivity() {
-        diagnosticPanel.isInteractive.toggle()
-        diagnosticPanel.ignoresMouseEvents = !diagnosticPanel.isInteractive
-        if diagnosticPanel.isInteractive {
-            NSApp.activate(ignoringOtherApps: true)
-            diagnosticPanel.makeKeyAndOrderFront(nil)
-            diagnosticPanel.contentView?.layer?.borderColor = NSColor.white.cgColor
-            diagnosticPanel.contentView?.layer?.borderWidth = 2.5
-        } else {
-            diagnosticPanel.resignKey()
-            diagnosticPanel.contentView?.layer?.borderColor = NSColor(red: 0.15, green: 0.85, blue: 0.95, alpha: 0.85).cgColor
-            diagnosticPanel.contentView?.layer?.borderWidth = 2.0
-        }
-        print("🖱️ Spatial HUD Interactivity: \(diagnosticPanel.isInteractive ? "ENABLED (Clicks Accepted)" : "DISABLED (Pass-Through)")")
     }
 
     private func hideDiagnosticOverlay() {
@@ -769,6 +842,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         BiometricTyper.shared.cancel()
         hideDiagnosticOverlay()
         print("🛑 PANIC ABORT TRIGGERED: Typing halted instantly and overlay hidden.")
+    }
+
+    func cleanQuit() {
+        BiometricTyper.shared.cancel()
+        hideDiagnosticOverlay()
+        close(lock)
+        unlink("/tmp/com.swikar.spatialvision.lock")
+        print("👋 SpatialVision Clean Quit. Exiting...")
+        exit(0)
     }
 }
 
