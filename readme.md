@@ -57,7 +57,7 @@ The architecture bridges low-level macOS system APIs (`ScreenCaptureKit`, `Carbo
 
 ### 8. Explicit Mode Routing & Live Prompt Synthesis
 * **Interview Mode Engine (Coding Locked as Default):** The system initializes to **Coding / DSA** by default with autonomous switching disabled to prevent accidental prompt mutations. The candidate explicitly switches formats via dedicated numeric Carbon hotkeys:
-  - **Option + 1 (Coding / DSA - Default):** Negative constraint ignoring microservice architecture; produces immediate verbal talking points (restate problem, 2 edge cases, brute force vs. optimal), minimal Python 3 code matching `main.py`, and Big-O complexity.
+  - **Option + 1 (Coding / DSA - Default):** Ultra-lean prompt synthesis (~200 tokens) with `ContextVault.md` and base instructions completely stripped; delivers immediate verbal talking points (restate problem, 2 edge cases, optimal approach with Big-O intuition), clean Python 3 implementation matching CoderPad signature, and 1-sentence complexity analysis in sub-second streaming latency. Includes a dedicated lean follow-up template for amendments.
   - **Option + 2 (System Design):** Capacity estimates, monospace ASCII architecture topology (optimized for Excalidraw / whiteboard), storage sharding, caching strategies, and resilience trade-offs.
   - **Option + 3 (Leadership & Behavioral):** Structured STAR methodology (Situation & Task 20s, 3 Leadership Actions 40s, Quantified Business Results 15s).
   - **Option + 4 (Past Project Retrospective):** Anchors strictly on `ContextVault.md` ground truth ($40M+ wire fraud, 10M+ sessions, 50k+ TPS), monospace ASCII architecture diagrams, production incident retrospective, and accepted trade-offs.

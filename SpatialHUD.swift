@@ -426,25 +426,64 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     // 8. Cognitive Technical Synthesis Engine
     // ========================================================================
     func buildPrompt(spokenInput: String, screenContext: String) -> String {
-        let vault = loadContextVault()
+        // Ultra-lean prompt path for coding rounds to eliminate context bleed and minimize latency
+        if currentMode == .coding {
+            if solveCount > 0 {
+                return """
+                FOLLOW-UP QUESTION IN ACTIVE CODING INTERVIEW:
+                INTERVIEWER SPOKEN QUERY: "\(spokenInput)"
+                CURRENT CODE ON SCREEN:
+                \(screenContext)
 
-        let baseInstructions = """
+                TASK:
+                1. If the interviewer asked a conceptual/trade-off question, provide 2 concise verbal bullet points to speak aloud.
+                2. If the interviewer asked to modify or optimize the code, provide ONLY the updated function or specific patch.
+                """
+            } else {
+                return """
+                ROLE: Senior Staff Software Engineer in a live technical coding interview.
+
+                INTERVIEWER AUDIO:
+                "\(spokenInput)"
+
+                CURRENT SCREEN / CODERPAD BUFFER:
+                \(screenContext)
+
+                OUTPUT FORMAT:
+                ### 1. WHAT TO SAY ALOUD RIGHT NOW
+                2-3 natural sentences to speak immediately: restate the core problem, ask 2 critical edge-case questions, and explain the optimal algorithmic approach with Big-O intuition before coding.
+
+                ### 2. EXACT PYTHON 3 IMPLEMENTATION
+                Clean, minimal, production-grade Python 3 code matching the function signature in CoderPad. If only a verbal follow-up was asked, output: "No code changes needed—verbal answer only."
+
+                ### 3. TIME & SPACE COMPLEXITY
+                1 sentence stating Time and Space complexity.
+                """
+            }
+        }
+
+        // Selective context injection: Only load ContextVault for Behavioral and Past Project rounds
+        var baseInstructions = """
         ROLE & TONE:
         You are my personal real-time technical copilot in a live high-stakes architectural collaboration session.
         Write in FIRST PERSON ("I", "my team", "we") as a senior Staff AI/ML & Distributed Systems Architect.
         Write clean, direct, conversational English for me to reference and speak through aloud.
         NEVER write meta-commentary, introductory remarks, or academic lectures.
-
-        GROUND TRUTH CONTEXT (My technical career history, projects, and numbers):
-        \(vault)
-
-        FALLBACK POLICY:
-        For past projects, technical vetoes, or architectural decisions, answer STRICTLY using the ground truth above.
-        For new algorithmic challenges, live debugging, or distributed systems design questions not covered above, seamlessly leverage your full Staff-level knowledge to provide the optimal solution in my voice.
-
-        CONTINUITY & ANCHORING MANDATE:
-        Inspect the existing code currently in CoderPad. You MUST preserve the candidate's existing algorithmic strategy, data structures, and variable naming conventions. Expand or patch the current code. NEVER pivot to an entirely different algorithmic paradigm unless explicitly instructed by the interviewer's speech.
         """
+
+        if currentMode == .projectDeepDive || currentMode == .behavioral {
+            let vault = loadContextVault()
+            baseInstructions += """
+
+
+            GROUND TRUTH CONTEXT (My technical career history, projects, and numbers):
+            \(vault)
+
+            FALLBACK POLICY:
+            For past projects, technical vetoes, or architectural decisions, answer STRICTLY using the ground truth above.
+            For new algorithmic challenges, live debugging, or distributed systems design questions not covered above, seamlessly leverage your full Staff-level knowledge to provide the optimal solution in my voice.
+            """
+        }
 
         if solveCount > 0 {
             return """
@@ -453,40 +492,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             FOLLOW-UP / AMENDMENT TO PREVIOUS SOLUTION:
             The interviewer just provided an update, new constraint, or follow-up question.
             INTERVIEWER UPDATE (Spoken): "\(spokenInput)"
-            CURRENT CODERPAD STATE (Screen OCR):
+            CURRENT SCREEN STATE:
             \(screenContext)
 
             TASK:
             1. Address the interviewer's new constraint or question directly.
-            2. If code needs to be adjusted, provide ONLY the specific modified function or patch matching their change.
+            2. If architecture or design needs to be adjusted, provide ONLY the specific modified subsystem or trade-off analysis.
             3. If they asked a conceptual/trade-off question, provide concise verbal talking points. Do not rewrite unchanged code.
             """
         }
 
         switch currentMode {
         case .coding:
-            return """
-            \(baseInstructions)
-
-            SPEAKER AUDIO QUERY:
-            "\(spokenInput)"
-
-            CURRENT SCREEN CODE BUFFER (OCR from Workspace/IDE):
-            \(screenContext)
-
-            NEGATIVE CONSTRAINT:
-            IGNORE real-world enterprise architectures, Kafka, Neo4j, or microservices from ContextVault.md. Focus strictly and exclusively on the algorithmic problem, data structures, and the code at hand.
-
-            OUTPUT EXACTLY IN THIS FORMAT:
-            ### 1. WHAT TO SAY ALOUD RIGHT NOW
-            2 to 3 natural sentences for immediate verbal delivery: restate the problem concisely, ask 2 critical edge cases to validate assumptions, and pitch the brute force vs. optimal approach with Big-O intuition.
-
-            ### 2. EXACT PYTHON 3 IMPLEMENTATION
-            Minimal, production-grade Python 3 code matching CoderPad `main.py`. Anchor strictly to candidate's existing variable names, function signatures, and data structures visible in the screen buffer. If only a verbal question was asked, output: "No code changes needed—verbal answer only."
-
-            ### 3. TIME & SPACE COMPLEXITY
-            State the exact Time Complexity and Space Complexity with a 1-sentence mathematical justification.
-            """
+            return ""
 
         case .systemDesign:
             return """
