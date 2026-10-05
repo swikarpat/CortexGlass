@@ -426,9 +426,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     // 8. Cognitive Technical Synthesis Engine
     // ========================================================================
     func buildPrompt(spokenInput: String, screenContext: String) -> String {
-    
-        let vault = (currentMode == .coding) ? "" : loadContextVault()
-        
+        let vault = loadContextVault()
+
         let baseInstructions = """
         ROLE & TONE:
         You are my personal real-time technical copilot in a live high-stakes architectural collaboration session.
