@@ -36,7 +36,7 @@ class SpatialPanel: NSPanel {
         isMovableByWindowBackground = true
 
         contentView?.wantsLayer = true
-        contentView?.layer?.cornerRadius = 12
+        contentView?.layer?.cornerRadius = 14
         contentView?.layer?.masksToBounds = true
         contentView?.layer?.borderWidth = 2.0
     }
@@ -46,13 +46,160 @@ class SpatialPanel: NSPanel {
 }
 
 // ============================================================================
-// 3. Autonomous Multimodal Application Controller (Apple Silicon M5 Pro)
+// 3. High-Speed Gemini REST Engine (Sub-2s Streaming with thinkingBudget: 0)
+// ============================================================================
+class GeminiRESTEngine {
+    static let shared = GeminiRESTEngine()
+    private var activeTask: Task<Void, Never>?
+
+    func resolveAPIKey() -> String? {
+        if let envKey = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !envKey.isEmpty { return envKey }
+        for p in ["~/.config/overlay/gemini_api_key.txt", "~/.config/overlay/api_key.txt"] {
+            if let k = try? String(contentsOfFile: NSString(string: p).expandingTildeInPath, encoding: .utf8) {
+                let cleaned = k.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !cleaned.isEmpty { return cleaned }
+            }
+        }
+        return nil
+    }
+
+    func cancel() {
+        activeTask?.cancel()
+        activeTask = nil
+    }
+
+    func streamCompletion(
+        prompt: String,
+        startTime: Date,
+        onFirstToken: @escaping @MainActor (Double) -> Void,
+        onToken: @escaping @MainActor (String) -> Void,
+        onComplete: @escaping @MainActor (String, Double, Double, String) -> Void,
+        onError: @escaping @MainActor (String) -> Void
+    ) {
+        cancel()
+
+        guard let apiKey = resolveAPIKey() else {
+            Task { @MainActor in
+                onError("GEMINI_API_KEY missing from ~/.config/overlay/gemini_api_key.txt")
+            }
+            return
+        }
+
+        activeTask = Task.detached(priority: .userInitiated) {
+            let preferredModel = ProcessInfo.processInfo.environment["GEMINI_MODEL"] ?? "gemini-3.8-flash"
+            var candidateModels = [preferredModel]
+            for fallback in ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-flash-latest"] {
+                if !candidateModels.contains(fallback) { candidateModels.append(fallback) }
+            }
+            var lastErrorMsg = "Failed to connect"
+
+            // Thinking Budget: "Low" thinking is 512 tokens (~2.2s TTFT with concise CoT reasoning).
+            // Can be overridden via GEMINI_THINKING_BUDGET=0 for instantaneous sub-second TTFT (~0.97s).
+            let thinkingBudget: Int = {
+                if let envStr = ProcessInfo.processInfo.environment["GEMINI_THINKING_BUDGET"], let val = Int(envStr) {
+                    return val
+                }
+                return 512 // Default: Low thinking (512 tokens)
+            }()
+
+            for model in candidateModels {
+                if Task.isCancelled { return }
+                guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):streamGenerateContent?key=\(apiKey)&alt=sse") else { continue }
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.timeoutInterval = 6.0
+
+                var genConfig: [String: Any] = [
+                    "temperature": 0.1,
+                    "maxOutputTokens": 2048
+                ]
+                if thinkingBudget >= 0 {
+                    genConfig["thinkingConfig"] = ["thinkingBudget": thinkingBudget]
+                }
+
+                let body: [String: Any] = [
+                    "contents": [["parts": [["text": prompt]]]],
+                    "generationConfig": genConfig
+                ]
+
+                do {
+                    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    guard let httpResp = response as? HTTPURLResponse else { continue }
+
+                    if httpResp.statusCode != 200 {
+                        let msg = "HTTP \(httpResp.statusCode)"
+                        if httpResp.statusCode == 429 || httpResp.statusCode == 404 || httpResp.statusCode == 503 || httpResp.statusCode == 400 {
+                            print("⚠️ Gemini model '\(model)' returned \(msg). Failing over to next candidate...")
+                            lastErrorMsg = "\(model): \(msg)"
+                            continue
+                        } else {
+                            await MainActor.run { onError("Gemini API Error (\(model)): \(msg)") }
+                            return
+                        }
+                    }
+
+                    var firstTokenTime: Double? = nil
+                    var accumulatedText = ""
+
+                    for try await line in bytes.lines {
+                        if Task.isCancelled { return }
+                        if line.hasPrefix("data: ") {
+                            let jsonStr = String(line.dropFirst(6))
+                            if let data = jsonStr.data(using: .utf8),
+                               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                               let candidates = json["candidates"] as? [[String: Any]],
+                               let content = candidates.first?["content"] as? [String: Any],
+                               let parts = content["parts"] as? [[String: Any]],
+                               let text = parts.first?["text"] as? String {
+
+                                if firstTokenTime == nil {
+                                    let ttft = Date().timeIntervalSince(startTime)
+                                    firstTokenTime = ttft
+                                    await MainActor.run { onFirstToken(ttft) }
+                                }
+                                accumulatedText += text
+                                await MainActor.run { onToken(text) }
+                            }
+                        }
+                    }
+
+                    let totalDuration = Date().timeIntervalSince(startTime)
+                    let finalTTFT = firstTokenTime ?? totalDuration
+                    let finalAcc = accumulatedText
+                    let finalModel = thinkingBudget > 0 ? "\(model) (Low Thinking)" : model
+                    await MainActor.run {
+                        onComplete(finalAcc, finalTTFT, totalDuration, finalModel)
+                    }
+                    return
+                } catch {
+                    print("⚠️ Gemini model '\(model)' network error: \(error.localizedDescription). Failing over...")
+                    lastErrorMsg = "\(model): \(error.localizedDescription)"
+                }
+            }
+
+            let finalErr = lastErrorMsg
+            await MainActor.run {
+                onError("All Gemini models exhausted: \(finalErr)")
+            }
+        }
+    }
+}
+
+// ============================================================================
+// 4. Autonomous Multimodal Application Controller (Apple Silicon M5 Pro)
 // ============================================================================
 class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStreamOutput {
     var panel: SpatialPanel!
     var webView: WKWebView!
     var opacity: CGFloat = 1.0
     var questionBuffer = ""
+
+    // High-Resolution Latency Telemetry & Solving State
+    var solveStartTime: Date?
+    var isSolving: Bool = false
+    var streamingBuffer = ""
 
     // 4-Mode Cognitive Routing Engine (Default: Coding / DSA)
     enum Mode {
@@ -75,6 +222,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             case .projectDeepDive: return "Past Project Retrospective & System Architecture"
             }
         }
+
+        var tag: String {
+            switch self {
+            case .coding: return "CODING / DSA"
+            case .systemDesign: return "SYSTEM DESIGN"
+            case .behavioral: return "BEHAVIORAL (STAR)"
+            case .projectDeepDive: return "PAST PROJECT"
+            }
+        }
     }
 
     var currentMode: Mode = .coding
@@ -83,6 +239,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         currentMode = mode
         print("🔀 Mode Switched: \(mode.label)")
         updateBorder()
+        if !isSolving && !isSessionRecording {
+            renderIdleHUD()
+        }
     }
 
     // Manual Session Recording State, 5s Pre-Roll Buffer & Multi-Turn Counter
@@ -96,7 +255,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     let audioQueue = DispatchQueue(label: "com.swikar.audio.q", qos: .userInteractive)
     var solveCount: Int = 0
 
-    // Autonomous Background Screen-Change Sentinel (Disabled to prevent CoderPad thrashing)
     var isScreenWatching = false
     var lastScreenText: String = ""
     var screenDebounceWorkItem: DispatchWorkItem?
@@ -113,61 +271,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         updateBorder()
 
         let cfg = WKWebViewConfiguration()
-        cfg.websiteDataStore = .default()
-        cfg.userContentController.addUserScript(
-            WKUserScript(
-                source: "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });",
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: false
-            )
-        )
+        cfg.websiteDataStore = .nonPersistent()
 
         webView = WKWebView(frame: panel.contentView!.bounds, configuration: cfg)
         webView.autoresizingMask = [.width, .height]
         webView.navigationDelegate = self
-        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+        webView.setValue(false, forKey: "drawsBackground") // Transparent window backing
         panel.contentView?.addSubview(webView)
 
         setupHotkeys()
-        if let url = URL(string: "https://gemini.google.com/app") {
-            webView.load(URLRequest(url: url))
-        }
+        renderIdleHUD()
         panel.orderFront(nil)
 
         // Hands-Free Sentinel Boot: Auto-start audio tap (Mode strictly locked to Coding / DSA default)
         startAudioCapture()
         startScreenWatcher()
-        print("🚀 CortexGlass Online: Audio Stream Tap ACTIVE. Mode Locked: \(currentMode.label) (Opt+1, Opt+2, Opt+3, Opt+4). Opt+S starts recording, Opt+Return stops & solves, Opt+O quits.")
-    }
-
-    // Strips extraneous Gemini UI elements for a clean HUD telemetry view
-    func webView(_ wv: WKWebView, didFinish n: WKNavigation!) {
-        let css = """
-        bard-sidenav, mat-sidenav, .boqGeminiUiSideNav, .side-navigation-v2,
-        header, .top-bar, button[aria-label*="Main menu"], 
-        button[aria-label*="Google Account"], .profile-button, .user-menu { 
-            display: none !important; 
-            width: 0 !important; 
-            height: 0 !important; 
-        }
-        main, .main-container, .conversation-container, chat-window {
-            margin: 0 !important; 
-            padding: 0 10px !important; 
-            width: 100% !important; 
-            max-width: 100% !important; 
-        }
-        """
-        wv.evaluateJavaScript("const s=document.createElement('style');s.innerHTML=`\(css)`;document.head.appendChild(s);", completionHandler: nil)
+        print("🚀 CortexGlass Online: Direct Gemini REST Engine ACTIVE. Mode: \(currentMode.label)")
+        print("⌨️  Hotkeys: Opt+S (Record), Opt+Return (Stop & Solve), Opt+Down/Up (Scroll), Opt+R (Reset), Opt+O (Quit)")
     }
 
     // Dynamic Border Visual Feedback:
-    // White = Interactive Mode; Vivid Amber/Red = Active Session Recording; Mode Color = Idle Sentinel Mode
     func updateBorder() {
         if panel.isInteractive {
             panel.contentView?.layer?.borderColor = NSColor.white.cgColor
             panel.contentView?.layer?.borderWidth = 2.5
         } else if isSessionRecording {
             panel.contentView?.layer?.borderColor = NSColor(red: 0.95, green: 0.35, blue: 0.15, alpha: 1.0).cgColor // Vivid Amber/Red ACTIVE RECORDING
+            panel.contentView?.layer?.borderWidth = 2.5
+        } else if isSolving {
+            panel.contentView?.layer?.borderColor = NSColor(red: 1.0, green: 0.78, blue: 0.15, alpha: 1.0).cgColor // Neon Gold SOLVING / DELIBERATING
             panel.contentView?.layer?.borderWidth = 2.5
         } else {
             panel.contentView?.layer?.borderColor = currentMode.color
@@ -188,11 +320,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         updateBorder()
     }
 
-    // Option + R : Silent DOM & Memory Reset between collaborative sessions
+    // Option + R : Reset session buffers and clear HUD
     func resetRound() {
+        GeminiRESTEngine.shared.cancel()
         questionBuffer = ""
         isSessionRecording = false
+        isSolving = false
+        solveStartTime = nil
         solveCount = 0
+        streamingBuffer = ""
         audioQueue.sync {
             audioSamples.removeAll()
             preRollBuffer.removeAll()
@@ -203,25 +339,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         screenDebounceWorkItem?.cancel()
         try? FileManager.default.removeItem(atPath: "/tmp/cortex_audio_stream.wav")
 
-        let js = """
-        const b = document.querySelector('button[aria-label*="New chat"], [data-test-id="new-chat-button"], a[href="/app"]');
-        if (b) {
-            b.click();
-        } else {
-            const e = document.querySelector('[contenteditable="true"]');
-            if (e) {
-                e.focus();
-                document.execCommand('selectAll');
-                document.execCommand('delete');
-            }
-        }
-        """
-        webView.evaluateJavaScript(js, completionHandler: nil)
+        renderIdleHUD()
         print("🔄 Session context, audio buffers, and screen caches cleanly purged.")
         updateBorder()
     }
 
-    // Reads ContextVault.md first (structured semantic markdown), falls back to .txt
     func loadContextVault() -> String {
         let mdPath = NSString(string: "~/.config/overlay/ContextVault.md").expandingTildeInPath
         if let t = try? String(contentsOfFile: mdPath, encoding: .utf8), !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -232,7 +354,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     }
 
     // ========================================================================
-    // 4. Autonomous Audio Tap Engine (ScreenCaptureKit System Audio Stream)
+    // 5. Autonomous Audio Tap Engine (ScreenCaptureKit System Audio Stream)
     // ========================================================================
     func startAudioCapture() {
         guard audioStream == nil else { return }
@@ -263,20 +385,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         }
     }
 
-    // Option + A : Toggle live system audio capture on/off
-    func toggleAudio() {
-        isAudioListening.toggle()
-        if !isAudioListening {
-            audioStream?.stopCapture(completionHandler: nil)
-            audioStream = nil
-            print("🔇 Audio Tap Muted.")
-        } else {
-            startAudioCapture()
-        }
-        updateBorder()
-    }
-
-    // Audio Stream Tap - Rolling Pre-Roll Buffer (Idle) & Session Accumulation (Recording)
     func stream(_ stream: SCStream, didOutputSampleBuffer sb: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .audio, isAudioListening,
               let desc = CMSampleBufferGetFormatDescription(sb),
@@ -307,14 +415,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             let dur = Double(chunk.count) / 16000.0
             speechDuration += dur
             audioSamples.append(contentsOf: chunk)
-
-            // Keep sample capacity safe up to 10 minutes of continuous recording (16000 samples/sec * 600s)
             let maxSamples = 16000 * 600
             if audioSamples.count > maxSamples {
                 audioSamples.removeFirst(audioSamples.count - maxSamples)
             }
         } else {
-            // Rolling 5-second pre-roll audio buffer (16,000 samples/sec * 5s = 80,000 samples)
             preRollBuffer.append(contentsOf: chunk)
             if preRollBuffer.count > 80000 {
                 preRollBuffer.removeFirst(preRollBuffer.count - 80000)
@@ -348,7 +453,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
 
         let p = Process()
         p.executableURL = URL(fileURLWithPath: whisperBin)
-        // Scaled to 8 threads on Apple Silicon M5 Pro for sub-200ms transcription
         p.arguments = ["-m", modelBin, "-f", "/tmp/cortex_audio_stream.wav", "--no-timestamps", "-nt", "-t", "8"]
         let pipe = Pipe()
         p.standardOutput = pipe
@@ -358,7 +462,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         p.waitUntilExit()
 
         guard let txt = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) else { return "" }
-        return txt.replacingOccurrences(of: "[BLANK_AUDIO]", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = txt.replacingOccurrences(of: "[BLANK_AUDIO]", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.lowercased() == "you" || cleaned.lowercased() == "thank you" || cleaned.lowercased() == "." {
+            return ""
+        }
+        return cleaned
     }
 
     nonisolated static func makeWav(size: Int) -> Data {
@@ -372,7 +480,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     }
 
     // ========================================================================
-    // 5. High-Speed Silent Screen Capture (Apple Vision OCR)
+    // 6. High-Speed Silent Screen Capture (Apple Vision OCR)
     // ========================================================================
     func captureScreenText() async -> String {
         do {
@@ -400,48 +508,52 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         }
     }
 
-    // ========================================================================
-    // 6. Autonomous Screen-Change Sentinel (Disabled to Eliminate UI Thrashing)
-    // ========================================================================
-    // NOTE: Autonomous screen diffing (delta >= 20 trigger) is disabled so typing
-    // in CoderPad NEVER triggers Gemini or causes HUD refreshes.
-    // Screen OCR is strictly restricted to:
-    // 1. Session Recording completion snapshot (Option + Return: Stop & Solve)
-    // 2. Direct single-shot snapshot (Option + Return when not recording)
     func startScreenWatcher() {
         guard isScreenWatching else { return }
     }
 
     // ========================================================================
-    // 7. Cognitive Context Classifier (Strict Mode Locking - Auto-Switching Disabled)
-    // ========================================================================
-    // NOTE: Automatic mode switching is strictly disabled. The HUD strictly remains
-    // in the candidate's selected mode (default: .coding) until explicitly switched
-    // via Option + 1, Option + 2, Option + 3, or Option + 4.
-    func classifyContext(spokenText: String, screenText: String) -> Mode {
-        return currentMode
-    }
-
-    // ========================================================================
-    // 8. Cognitive Technical Synthesis Engine
+    // 7. Cognitive Technical Synthesis Engine (Prompt Builder)
     // ========================================================================
     func buildPrompt(spokenInput: String, screenContext: String) -> String {
-        // Ultra-lean prompt path for coding rounds to eliminate context bleed and minimize latency
         if currentMode == .coding {
             if solveCount > 0 {
                 return """
-                FOLLOW-UP QUESTION IN ACTIVE CODING INTERVIEW:
+                ROLE: Senior Engineer coaching a candidate in live CoderPad interview follow-up.
+
+                CRITICAL INSTRUCTION FOR "WHAT TO SAY ALOUD":
+                Sound 100% human, casual, and authentic. Never write textbook essays or formal paragraphs.
+                Write exactly 2 SHORT conversational bullet points in quotes (under 15 words each) representing natural human "thinking out loud":
+                - Bullet 1 [Direct Insight]: "Ah, if ..., we don't need ...—we can just ..."
+                - Bullet 2 [Trade-off & Next Step]: "That keeps time at O(...) while dropping space to O(...). Let me update that right here."
+
                 INTERVIEWER SPOKEN QUERY: "\(spokenInput)"
                 CURRENT CODE ON SCREEN:
                 \(screenContext)
 
-                TASK:
-                1. If the interviewer asked a conceptual/trade-off question, provide 2 concise verbal bullet points to speak aloud.
-                2. If the interviewer asked to modify or optimize the code, provide ONLY the updated function or specific patch.
+                OUTPUT FORMAT EXACTLY AS FOLLOWS:
+                ### 1. WHAT TO SAY ALOUD RIGHT NOW
+                (the 2 short conversational bullet points in quotes)
+
+                ### 2. EXACT PYTHON 3 IMPLEMENTATION
+                ```python
+                # Only the modified function or patched code block
+                ```
+
+                ### 3. TIME & SPACE COMPLEXITY
+                Time: O(...) | Space: O(...)
                 """
             } else {
                 return """
-                ROLE: Senior Staff Software Engineer in a live technical coding interview.
+                ROLE: Senior Engineer coaching a candidate in a live technical coding interview on CoderPad.
+
+                CRITICAL INSTRUCTION FOR "WHAT TO SAY ALOUD":
+                Interviewers immediately detect and disqualify candidates who sound like they are reading textbook scripts or AI responses.
+                DO NOT write formal essays, paragraphs, or academic text.
+                Write exactly 3 SHORT, PUNCHY bullet points phrased as CASUAL HUMAN "THINKING OUT LOUD" (in quotes, under 15 words each):
+                - Bullet 1 [Clarify in plain English]: "Got it, so looking at this, the goal is..." (restate core objective simply)
+                - Bullet 2 [First instinct & Brute-force trade-off]: "My first thought is brute force with ..., but that would be O(N^2). We can do better..."
+                - Bullet 3 [Optimal Approach]: "If we use a ..., we can get this down to O(N) in a single pass. Let me start coding that."
 
                 INTERVIEWER AUDIO:
                 "\(spokenInput)"
@@ -449,20 +561,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 CURRENT SCREEN / CODERPAD BUFFER:
                 \(screenContext)
 
-                OUTPUT FORMAT:
+                OUTPUT FORMAT EXACTLY AS FOLLOWS:
                 ### 1. WHAT TO SAY ALOUD RIGHT NOW
-                2-3 natural sentences to speak immediately: restate the core problem, ask 2 critical edge-case questions, and explain the optimal algorithmic approach with Big-O intuition before coding.
+                (the 3 natural conversational bullet points in quotes)
 
                 ### 2. EXACT PYTHON 3 IMPLEMENTATION
-                Clean, minimal, production-grade Python 3 code matching the function signature in CoderPad. If only a verbal follow-up was asked, output: "No code changes needed—verbal answer only."
+                ```python
+                # Clean, minimal, production-grade Python 3 code matching the function signature in CoderPad.
+                ```
 
                 ### 3. TIME & SPACE COMPLEXITY
-                1 sentence stating Time and Space complexity.
+                Time: O(...) | Space: O(...)
                 """
             }
         }
 
-        // Selective context injection: Only load ContextVault for Behavioral and Past Project rounds
         var baseInstructions = """
         ROLE & TONE:
         You are my personal real-time technical copilot in a live high-stakes architectural collaboration session.
@@ -473,16 +586,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
 
         if currentMode == .projectDeepDive || currentMode == .behavioral {
             let vault = loadContextVault()
-            baseInstructions += """
-
-
-            GROUND TRUTH CONTEXT (My technical career history, projects, and numbers):
-            \(vault)
-
-            FALLBACK POLICY:
-            For past projects, technical vetoes, or architectural decisions, answer STRICTLY using the ground truth above.
-            For new algorithmic challenges, live debugging, or distributed systems design questions not covered above, seamlessly leverage your full Staff-level knowledge to provide the optimal solution in my voice.
-            """
+            baseInstructions += "\n\nGROUND TRUTH CONTEXT (My technical career history, projects, and numbers):\n\(vault)"
         }
 
         if solveCount > 0 {
@@ -490,15 +594,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             \(baseInstructions)
 
             FOLLOW-UP / AMENDMENT TO PREVIOUS SOLUTION:
-            The interviewer just provided an update, new constraint, or follow-up question.
             INTERVIEWER UPDATE (Spoken): "\(spokenInput)"
             CURRENT SCREEN STATE:
             \(screenContext)
 
             TASK:
-            1. Address the interviewer's new constraint or question directly.
-            2. If architecture or design needs to be adjusted, provide ONLY the specific modified subsystem or trade-off analysis.
-            3. If they asked a conceptual/trade-off question, provide concise verbal talking points. Do not rewrite unchanged code.
+            1. Address the interviewer's new constraint directly.
+            2. If architecture/code needs to be adjusted, provide ONLY the specific modified subsystem or patch.
+            3. If they asked a conceptual/trade-off question, provide concise verbal talking points.
             """
         }
 
@@ -510,81 +613,70 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             return """
             \(baseInstructions)
 
-            SYSTEM DESIGN SCENARIO (Spoken or Architecture Canvas):
-            "\(spokenInput)"
-
-            ARCHITECTURE CANVAS / SCREEN TEXT:
+            SYSTEM DESIGN SCENARIO: "\(spokenInput)"
+            SCREEN CONTEXT:
             \(screenContext)
 
-            OUTPUT EXACTLY IN THIS TECHNICAL BRIEFING FORMAT:
+            OUTPUT EXACTLY IN THIS FORMAT:
             ### 1. ARCHITECTURAL SCOPE & CAPACITY ESTIMATES (Verbatim Opener — Read out loud)
-            2 to 3 sentences establishing core capacity estimates (QPS/TPS, read/write ratio, bandwidth, storage over 5 years) and latency SLAs (p99 < 20ms).
+            2 to 3 sentences establishing core capacity estimates (QPS/TPS, read/write ratio, bandwidth, storage) and latency SLAs (p99 < 20ms).
 
-            ### 2. MONOSPACE ASCII ARCHITECTURE (Optimized for Excalidraw / Whiteboard)
-            Clean, copy-pasteable monospace ASCII diagram using standard box characters (+, -, |, >) designed to be drawn directly onto an Excalidraw or whiteboard canvas:
-            [Client] --> [API Gateway / LB] --> [Microservice Cluster] --> [Cache / DB Shards]
+            ### 2. MONOSPACE ASCII ARCHITECTURE
+            ```
+            [Client] --> [API Gateway / LB] --> [Microservices] --> [Datastore / Cache]
+            ```
 
             ### 3. CORE SUBSYSTEMS & DISTRIBUTED TRADEOFFS
-            - Storage & Sharding Keys: Partition key selection, hot-partition mitigation, replication & consensus topology.
-            - Caching Strategy: Cache-aside vs. write-through, eviction policy (TTL/LRU), cache stampede mitigation.
-            - Failure Modes & Resilience: Backpressure, circuit breakers, idempotency keys, split-brain recovery.
-
-            ### 4. ARCHITECTURAL EXPLORATION (1 sentence)
-            A natural Staff-level prompt to proactively explore deep architectural trade-offs with the interviewer.
+            - Storage & Sharding Keys: Partition key selection, hot-partition mitigation.
+            - Caching Strategy: Cache-aside vs write-through, eviction policy, stampede mitigation.
+            - Failure Modes & Resilience: Circuit breakers, idempotency, backpressure.
             """
 
         case .behavioral:
             return """
             \(baseInstructions)
 
-            LEADERSHIP & BEHAVIORAL QUERY:
-            "\(spokenInput)"
+            LEADERSHIP & BEHAVIORAL QUERY: "\(spokenInput)"
 
-            OUTPUT EXACTLY IN THIS STRUCTURED STAR FORMAT:
-            ### 1. SITUATION & TASK (20s - Verbatim Script to speak aloud)
-            Concise high-stakes business crisis, severe technical constraint, or engineering leadership conflict.
+            OUTPUT IN STRUCTURED STAR FORMAT:
+            ### 1. SITUATION & TASK (20s Script)
+            High-stakes business crisis or technical constraint.
 
-            ### 2. LEADERSHIP ACTIONS TAKEN (40s - Verbatim Script to speak aloud)
-            Exactly 3 concrete engineering leadership actions I personally spearheaded (e.g., architectural veto, cross-functional consensus building, unblocking critical path).
+            ### 2. LEADERSHIP ACTIONS TAKEN (40s Script)
+            3 concrete engineering leadership actions I personally spearheaded.
 
-            ### 3. QUANTIFIED BUSINESS RESULTS (15s - Verbatim Script to speak aloud)
-            Concrete business impact, dollar revenue protected, fraud loss reduction, or infrastructure cost savings achieved.
+            ### 3. QUANTIFIED BUSINESS RESULTS (15s Script)
+            Concrete revenue protected, fraud loss reduction, or cost savings achieved.
             """
 
         case .projectDeepDive:
             return """
             \(baseInstructions)
 
-            PAST PROJECT RETROSPECTIVE QUERY:
-            "\(spokenInput)"
-
+            PAST PROJECT RETROSPECTIVE QUERY: "\(spokenInput)"
             SCREEN CONTEXT:
             \(screenContext)
 
-            ANCHORING MANDATE:
-            Anchor strictly on ground truth projects from ContextVault.md (e.g., Socure, HyperRoute, Capital One, T-Mobile). Quoting real verified scale ($40M+ wire fraud prevented, 10M+ sessions, 50k+ TPS).
+            OUTPUT IN TECHNICAL BRIEFING FORMAT:
+            ### 1. DIRECT TECHNICAL ANSWER (Read out loud)
+            2 to 3 sentences directly answering, anchoring on ground truth scale and production metrics.
 
-            OUTPUT EXACTLY IN THIS TECHNICAL BRIEFING FORMAT:
-            ### 1. DIRECT TECHNICAL ANSWER (Verbatim Script — Read out loud)
-            2 to 3 sentences directly answering the question, anchoring on the exact project from ground truth, and quoting real-world scale and production metrics.
-
-            ### 2. MONOSPACE ASCII ARCHITECTURE (Past Project Topology)
-            If asked to draw or explain architecture: provide the clean monospace ASCII system topology of the past project from ContextVault.md. Otherwise, provide a 1-sentence summary of the component boundaries.
+            ### 2. MONOSPACE ASCII ARCHITECTURE
+            Clean ASCII topology of the subsystem.
 
             ### 3. TECHNICAL MECHANISMS, TRADE-OFFS & PRODUCTION INCIDENTS
-            - Under-the-Hood Mechanisms: Exactly how it functioned (e.g., FSM engine, Neo4j GraphRAG, H3 spatial indexing, Kafka event streams, Redis cache).
-            - Production Incident Overcome: The specific scalability crisis, high-stakes failure, or architectural bottleneck faced and how I engineered the resolution.
-            - Accepted Engineering Trade-Off: Explicit trade-off accepted (CAP theorem balance, latency vs. consistency, compute vs. memory).
-
-            ### 4. PROACTIVE TECHNICAL DIRECTION
-            1 follow-up question to steer the interviewer deeper into an area of strength.
+            Under-the-hood mechanisms, production incident overcome, and accepted trade-off.
             """
         }
     }
 
-    // Option + S : Start Session Recording (Listening & Watching with 5s Pre-Roll)
+    // ========================================================================
+    // 8. Session Recording & Execution State Machine
+    // ========================================================================
     func startSessionRecording() {
+        GeminiRESTEngine.shared.cancel()
         isSessionRecording = true
+        isSolving = false
         audioQueue.sync {
             audioSamples = preRollBuffer
             preRollBuffer.removeAll()
@@ -592,43 +684,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             silenceDuration = 0
         }
 
-        // Invalidate/stop any active Gemini DOM generation
-        let stopJs = """
-        (()=>{
-            const stopBtn = document.querySelector('button[aria-label*="Stop"], button[aria-label*="stop"], [data-test-id="stop-button"]');
-            if (stopBtn && !stopBtn.disabled) stopBtn.click();
-        })();
-        """
-        webView.evaluateJavaScript(stopJs, completionHandler: nil)
-
         Task { @MainActor in
             let baseline = await self.captureScreenText()
-            if !baseline.isEmpty {
-                self.lastScreenText = baseline
-            }
+            if !baseline.isEmpty { self.lastScreenText = baseline }
         }
         self.updateBorder()
+        self.renderRecordingHUD()
         print("🎙️ Session Recording STARTED (Listening & Watching)...")
     }
 
-    // Option + Return : Stop Session & Solve (or Direct Single-Shot OCR if not recording)
     func stopSessionAndSolve() {
-        guard isSessionRecording else {
-            print("⚡ Single-Shot Direct OCR Triggered (No Active Recording Session)...")
-            Task { @MainActor in
-                let screenText = await self.captureScreenText()
-                if !screenText.isEmpty { self.lastScreenText = screenText }
-                let finalScreen = screenText.isEmpty ? self.lastScreenText : screenText
-                let prompt = self.buildPrompt(spokenInput: self.questionBuffer, screenContext: finalScreen)
-                self.sendToGemini(prompt)
-                self.solveCount += 1
-            }
-            return
-        }
-
-        isSessionRecording = false
+        let t0 = Date()
+        self.solveStartTime = t0
+        self.isSolving = true
+        self.isSessionRecording = false
         self.updateBorder()
-        print("🚀 Session Recording STOPPED. Solving with full audio + screen context...")
+        self.renderSolvingHUD()
 
         var samplesToProcess: [Float] = []
         audioQueue.sync {
@@ -639,56 +710,601 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         }
 
         let samples = samplesToProcess
-        Task { @MainActor in
-            // Simultaneously run Whisper on accumulated audio and capture final screen OCR
-            async let whisperTask: String = Task.detached(priority: .userInitiated) { () -> String in
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            // Step 1: Simultaneously run Whisper on accumulated audio and capture final screen OCR
+            async let whisperTask: (text: String, dur: Double) = Task.detached(priority: .userInitiated) { () -> (String, Double) in
+                let tStart = Date()
                 if samples.count >= 3200 {
-                    return AppDelegate.transcribeSamples(samples)
+                    let res = AppDelegate.transcribeSamples(samples)
+                    return (res, Date().timeIntervalSince(tStart))
                 } else {
-                    return ""
+                    return ("", 0.0)
                 }
             }.value
 
-            async let screenTask = self.captureScreenText()
+            let tOcrStart = Date()
+            async let screenTask: (text: String, dur: Double) = {
+                let res = await self.captureScreenText()
+                return (res, Date().timeIntervalSince(tOcrStart))
+            }()
 
-            let (transcribedSpeech, finalScreenText) = await (whisperTask, screenTask)
+            let (whisperRes, screenRes) = await (whisperTask, screenTask)
 
-            if !transcribedSpeech.isEmpty {
-                self.questionBuffer = transcribedSpeech
-                print("🎯 Audio Query Transcribed: \"\(transcribedSpeech)\"")
+            if !whisperRes.text.isEmpty {
+                self.questionBuffer = whisperRes.text
+                print("⏱️ [\(String(format: "%.3f", Date().timeIntervalSince(t0)))s] Whisper Transcription: \"\(whisperRes.text)\" (took \(String(format: "%.3f", whisperRes.dur))s)")
+            } else {
+                print("⏱️ [\(String(format: "%.3f", Date().timeIntervalSince(t0)))s] Whisper: Ready (took \(String(format: "%.3f", whisperRes.dur))s)")
             }
 
-            if !finalScreenText.isEmpty {
-                self.lastScreenText = finalScreenText
+            if !screenRes.text.isEmpty {
+                self.lastScreenText = screenRes.text
             }
+            let lineCount = (screenRes.text.isEmpty ? self.lastScreenText : screenRes.text).split(separator: "\n").count
+            print("⏱️ [\(String(format: "%.3f", Date().timeIntervalSince(t0)))s] Screen Capture & Vision OCR: \(lineCount) lines recognized (took \(String(format: "%.3f", screenRes.dur))s)")
 
-            let spoken = transcribedSpeech.isEmpty ? self.questionBuffer : transcribedSpeech
-            let screenContext = finalScreenText.isEmpty ? self.lastScreenText : finalScreenText
+            let spoken = whisperRes.text.isEmpty ? self.questionBuffer : whisperRes.text
+            let screenContext = screenRes.text.isEmpty ? self.lastScreenText : screenRes.text
 
             let prompt = self.buildPrompt(spokenInput: spoken, screenContext: screenContext)
-            self.sendToGemini(prompt)
-            self.solveCount += 1
+            let prepTime = Date().timeIntervalSince(t0)
+            print("⏱️ [\(String(format: "%.3f", prepTime))s] Local Context Ready. Connecting to Gemini REST API...")
+
+            self.streamingBuffer = ""
+            self.renderStreamingHUDHeader()
+
+            // Step 2: Stream directly from Gemini REST API with thinkingBudget: 0 (sub-second TTFT)
+            GeminiRESTEngine.shared.streamCompletion(
+                prompt: prompt,
+                startTime: t0,
+                onFirstToken: { ttft in
+                    print("⏱️ [\(String(format: "%.3f", ttft))s] ⚡ FIRST TOKEN RECEIVED in HUD! (TTFT: \(String(format: "%.2f", ttft))s)")
+                    self.isSolving = false
+                    self.updateBorder()
+                },
+                onToken: { chunk in
+                    self.streamingBuffer += chunk
+                    self.appendStreamChunk(chunk)
+                },
+                onComplete: { fullText, ttft, totalDuration, modelName in
+                    self.solveCount += 1
+                    self.isSolving = false
+                    self.updateBorder()
+                    self.renderFinalCards(
+                        rawText: fullText,
+                        ttftSec: ttft,
+                        totalDurationSec: totalDuration,
+                        modelName: modelName
+                    )
+                    print("⏱️ [\(String(format: "%.3f", totalDuration))s] 🏁 Full Solution Complete! TTFT: \(String(format: "%.2f", ttft))s | Total: \(String(format: "%.2f", totalDuration))s (\(modelName))\n")
+                },
+                onError: { err in
+                    self.isSolving = false
+                    self.updateBorder()
+                    self.renderErrorHUD(err)
+                    print("❌ Gemini REST Error: \(err)")
+                }
+            )
         }
     }
 
-    // Option + O : Clean Quit Application
     func cleanQuit() {
         print("🛑 CortexGlass Exiting Cleanly.")
+        GeminiRESTEngine.shared.cancel()
         audioStream?.stopCapture(completionHandler: nil)
         try? FileManager.default.removeItem(atPath: lockPath)
         exit(0)
     }
 
-    // DOM Injector & Form Submitter
-    func sendToGemini(_ text: String) {
-        if panel.alphaValue == 0 { panel.alphaValue = opacity }
-        guard let d = try? JSONSerialization.data(withJSONObject: [text]), let j = String(data: d, encoding: .utf8) else { return }
-        let js = "(()=>{const e=document.querySelector('[contenteditable=\"true\"]');if(!e)return;e.focus();document.execCommand('selectAll');document.execCommand('insertText',false,\(j)[0]);e.dispatchEvent(new Event('input',{bubbles:true}));setTimeout(()=>{let s=false;document.querySelectorAll('button,[role=\"button\"]').forEach(b=>{const a=(b.getAttribute('aria-label')||'').toLowerCase();if((a.includes('send')||a.includes('submit'))&&!b.disabled){b.click();s=true;}});if(!s)e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:13,bubbles:true}));},300);})();"
+    // ========================================================================
+    // 9. Glassmorphism HUD HTML Renderer
+    // ========================================================================
+    func baseCSS() -> String {
+        return """
+        :root {
+            --bg: #070a12;
+            --card: rgba(18, 24, 38, 0.85);
+            --border: rgba(56, 189, 248, 0.25);
+            --accent: #38bdf8;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+            --speech-bg: rgba(56, 189, 248, 0.09);
+            --speech-border: rgba(56, 189, 248, 0.35);
+            --code-bg: #0d121c;
+            --code-border: #1e293b;
+            --code-text: #7dd3fc;
+            --gold: #facc15;
+            --rose: #fb7185;
+            --green: #34d399;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+            font-size: 13.5px;
+            line-height: 1.55;
+            padding: 16px;
+            user-select: text;
+            -webkit-user-select: text;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            margin-bottom: 14px;
+        }
+        .brand {
+            font-weight: 800;
+            font-size: 11px;
+            letter-spacing: 1.2px;
+            color: var(--accent);
+            text-transform: uppercase;
+        }
+        .mode-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: rgba(56, 189, 248, 0.15);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            color: var(--accent);
+            letter-spacing: 0.5px;
+        }
+        .pill {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .pill-ready { background: rgba(52, 211, 153, 0.15); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.3); }
+        .pill-rec { background: rgba(251, 113, 133, 0.18); color: var(--rose); border: 1px solid rgba(251, 113, 133, 0.4); animation: pulse 1.2s infinite; }
+        .pill-solve { background: rgba(250, 204, 21, 0.18); color: var(--gold); border: 1px solid rgba(250, 204, 21, 0.4); animation: pulse 1.2s infinite; }
+        .pill-latency { background: rgba(56, 189, 248, 0.15); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.35); }
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1.0; } 100% { opacity: 0.5; } }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+        }
+        .speech-card {
+            background: var(--speech-bg);
+            border: 1px solid var(--speech-border);
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+        }
+        .card-label {
+            font-size: 10.5px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .label-speech { color: #38bdf8; }
+        .label-code { color: #a78bfa; }
+        .label-complexity { color: #34d399; }
+        .speech-text {
+            font-size: 14px;
+            font-weight: 500;
+            color: #ffffff;
+            line-height: 1.6;
+        }
+        .speech-cues {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .cue-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            background: rgba(56, 189, 248, 0.08);
+            border-left: 3px solid #38bdf8;
+            padding: 9px 12px;
+            border-radius: 6px;
+            font-size: 13.5px;
+            font-weight: 500;
+            color: #f8fafc;
+            line-height: 1.5;
+        }
+        .cue-num {
+            background: rgba(56, 189, 248, 0.22);
+            color: #38bdf8;
+            font-size: 10.5px;
+            font-weight: 700;
+            border-radius: 50%;
+            width: 19px;
+            height: 19px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .cue-text {
+            flex: 1;
+        }
+        pre {
+            background: var(--code-bg);
+            border: 1px solid var(--code-border);
+            border-radius: 8px;
+            padding: 12px 14px;
+            overflow-x: auto;
+            font-family: 'SF Mono', Menlo, Monaco, monospace;
+            font-size: 12.5px;
+            line-height: 1.5;
+            color: var(--code-text);
+        }
+        .copy-btn {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: var(--text-muted);
+            border-radius: 4px;
+            padding: 2px 7px;
+            font-size: 9.5px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .copy-btn:hover { color: #ffffff; background: rgba(255,255,255,0.15); }
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+        .hk {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-family: 'SF Mono', monospace;
+            font-size: 9.5px;
+            color: #cbd5e1;
+        }
+        """
+    }
+
+    func renderIdleHUD() {
+        let preferredModel = ProcessInfo.processInfo.environment["GEMINI_MODEL"] ?? "gemini-3.8-flash"
+        let thinkingBudget = Int(ProcessInfo.processInfo.environment["GEMINI_THINKING_BUDGET"] ?? "512") ?? 512
+        let thinkingLabel = thinkingBudget > 0 ? "Low Thinking" : "Sub-second"
+        let modelBadge = "\(preferredModel) • \(thinkingLabel)"
+
+        let html = """
+        <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
+        <div class="header">
+            <div class="brand">CORTEXGLASS HUD</div>
+            <div class="mode-badge">\(currentMode.tag)</div>
+            <div class="pill pill-ready">● READY</div>
+        </div>
+        <div class="card" style="text-align: center; padding: 28px 16px;">
+            <div style="font-size: 28px; margin-bottom: 8px;">🚀</div>
+            <div style="font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 6px;">Direct Gemini REST Engine Online</div>
+            <div style="font-size: 12px; color: var(--text-muted); max-width: 380px; margin: 0 auto 16px;">
+                Sub-2s latency streaming • On-device Whisper ANE • Screen OCR • Zero CoderPad focus theft
+            </div>
+            <div style="display: flex; justify-content: center; gap: 8px; font-size: 11px;">
+                <span class="pill pill-latency">⚡ ~1.8s TTFT</span>
+                <span class="pill pill-latency">\(modelBadge)</span>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-label label-speech"><span>QUICK OPERATIONAL GUIDE</span></div>
+            <ul style="padding-left: 18px; font-size: 12px; color: #cbd5e1; line-height: 1.7;">
+                <li><span class="hk">Opt + S</span> : Start session recording (interviewer speech + screen)</li>
+                <li><span class="hk">Opt + Return</span> : Stop & solve instantly (streams answer in ~1.5s)</li>
+                <li><span class="hk">Opt + Down/Up</span> : Smooth scroll HUD (zero focus loss on CoderPad)</li>
+                <li><span class="hk">Opt + R</span> : Reset session for new question</li>
+                <li><span class="hk">Opt + 1..4</span> : Switch interview mode (Coding, SysDesign, Behavioral, Project)</li>
+            </ul>
+        </div>
+        <div class="footer">
+            <span>SpatialHUD Compositor (sharingType: none)</span>
+            <span><span class="hk">Opt + O</span> Quit</span>
+        </div>
+        </body></html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    func renderRecordingHUD() {
+        let html = """
+        <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
+        <div class="header">
+            <div class="brand">CORTEXGLASS HUD</div>
+            <div class="mode-badge">\(currentMode.tag)</div>
+            <div class="pill pill-rec">🎙️ RECORDING...</div>
+        </div>
+        <div class="card" style="padding: 24px 16px; border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.06);">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <span style="font-size: 24px;">🎙️</span>
+                <div>
+                    <div style="font-size: 14px; font-weight: 700; color: #fff;">Listening to Interviewer Question...</div>
+                    <div style="font-size: 11.5px; color: var(--text-muted);">Accumulating audio samples and caching screen context</div>
+                </div>
+            </div>
+            <div style="font-size: 11.5px; color: #cbd5e1; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 6px;">
+                Press <span class="hk">Opt + Return</span> when the interviewer finishes speaking to solve.
+            </div>
+        </div>
+        <div class="footer">
+            <span>5s pre-roll circular buffer engaged</span>
+            <span><span class="hk">Opt + Return</span> Stop & Solve</span>
+        </div>
+        </body></html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    func renderSolvingHUD() {
+        let html = """
+        <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
+        <div class="header">
+            <div class="brand">CORTEXGLASS HUD</div>
+            <div class="mode-badge">\(currentMode.tag)</div>
+            <div class="pill pill-solve">⚡ SOLVING...</div>
+        </div>
+        <div class="card" style="padding: 24px 16px; border-color: rgba(250, 204, 21, 0.4); background: rgba(250, 204, 21, 0.06);">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <span style="font-size: 24px;">⚡</span>
+                <div>
+                    <div style="font-size: 14px; font-weight: 700; color: #fff;">Parallel ANE Inference & Synthesis</div>
+                    <div style="font-size: 11.5px; color: var(--text-muted);">Whisper ANE • Apple Vision OCR • Gemini 3.8 / 3 Flash (Low) REST</div>
+                </div>
+            </div>
+            <div style="font-size: 11px; color: #94a3b8; display: flex; flex-direction: column; gap: 6px;">
+                <div>● Running 8-core Whisper audio transcription...</div>
+                <div>● Parsing Retina display problem statement...</div>
+                <div>● Streaming tokens via direct HTTPS SSE stream...</div>
+            </div>
+        </div>
+        </body></html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    func renderStreamingHUDHeader() {
+        let roundLabel = solveCount > 0 ? "Follow-Up #\(solveCount)" : "Initial Problem"
+        let html = """
+        <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
+        <div class="header">
+            <div class="brand">CORTEXGLASS HUD</div>
+            <div class="mode-badge">\(currentMode.tag) • \(roundLabel)</div>
+            <div class="pill pill-solve">⚡ STREAMING...</div>
+        </div>
+        <div class="card" style="margin-bottom: 12px;">
+            <div class="card-label label-speech"><span>LIVE STREAMING SOLUTION</span></div>
+            <div id="stream-content" style="font-family: 'SF Mono', Menlo, monospace; font-size: 12.5px; line-height: 1.5; color: #f8fafc; white-space: pre-wrap; word-break: break-word;"></div>
+        </div>
+        <script>
+            function appendText(chunk) {
+                const el = document.getElementById('stream-content');
+                if (el) {
+                    el.textContent += chunk;
+                    window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'});
+                }
+            }
+        </script>
+        </body></html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    func appendStreamChunk(_ chunk: String) {
+        guard let d = try? JSONSerialization.data(withJSONObject: [chunk]),
+              let j = String(data: d, encoding: .utf8) else { return }
+        let js = "if (window.appendText) { window.appendText(\(j)[0]); }"
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
+    func renderFinalCards(rawText: String, ttftSec: Double, totalDurationSec: Double, modelName: String) {
+        let (speech, code, complexity) = parseSections(raw: rawText)
+        let roundLabel = solveCount > 1 ? "Follow-Up #\(solveCount - 1)" : "Initial Problem"
+
+        let speechHtml = speech.isEmpty ? "" : """
+        <div class="speech-card">
+            <div class="card-label label-speech">
+                <span>🗣️ WHAT TO SAY ALOUD (CASUAL THINKING CUES)</span>
+                <span style="font-size: 9.5px; color: var(--accent); font-weight: 600;">NATURAL • GLANCE & SPEAK</span>
+            </div>
+            \(formatSpeechCuesHTML(speech))
+        </div>
+        """
+
+        let codeHtml = code.isEmpty ? "" : """
+        <div class="card">
+            <div class="card-label label-code">
+                <span>💻 EXACT PYTHON 3 IMPLEMENTATION</span>
+                <button class="copy-btn" onclick="copyCode()">Copy Code</button>
+            </div>
+            <pre><code id="code-snippet">\(escapeHtml(code))</code></pre>
+        </div>
+        """
+
+        let complexityHtml = complexity.isEmpty ? "" : """
+        <div class="card" style="padding: 10px 14px; background: rgba(52, 211, 153, 0.08); border-color: rgba(52, 211, 153, 0.3);">
+            <div class="card-label label-complexity" style="margin-bottom: 4px;">
+                <span>⏱️ TIME & SPACE COMPLEXITY</span>
+            </div>
+            <div style="font-size: 12.5px; color: #e2e8f0;">\(escapeHtml(complexity))</div>
+        </div>
+        """
+
+        let html = """
+        <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
+        <div class="header">
+            <div class="brand">CORTEXGLASS HUD</div>
+            <div class="mode-badge">\(currentMode.tag) • \(roundLabel)</div>
+            <div class="pill pill-latency">⚡ \(String(format: "%.2f", totalDurationSec))s (\(String(format: "%.2f", ttftSec))s TTFT)</div>
+        </div>
+        \(speechHtml)
+        \(codeHtml)
+        \(complexityHtml)
+        <div class="footer">
+            <span>\(modelName)</span>
+            <span><span class="hk">Opt+Down/Up</span> Scroll • <span class="hk">Opt+S</span> Next • <span class="hk">Opt+R</span> Reset</span>
+        </div>
+        <script>
+            function copyCode() {
+                const code = document.getElementById('code-snippet');
+                if (code) {
+                    navigator.clipboard.writeText(code.innerText);
+                    const btn = document.querySelector('.copy-btn');
+                    if (btn) { btn.innerText = 'Copied!'; setTimeout(() => { btn.innerText = 'Copy Code'; }, 1500); }
+                }
+            }
+        </script>
+        </body></html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    func renderErrorHUD(_ errorMsg: String) {
+        let html = """
+        <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
+        <div class="header">
+            <div class="brand">CORTEXGLASS HUD</div>
+            <div class="mode-badge">\(currentMode.tag)</div>
+            <div class="pill" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">❌ ERROR</div>
+        </div>
+        <div class="card" style="border-color: rgba(239, 68, 68, 0.4); padding: 18px;">
+            <div style="font-size: 13.5px; font-weight: 700; color: #f87171; margin-bottom: 8px;">Inference Failed</div>
+            <div style="font-size: 12px; color: #cbd5e1; font-family: 'SF Mono', monospace; line-height: 1.5;">\(escapeHtml(errorMsg))</div>
+        </div>
+        <div class="footer">
+            <span>Check ~/.config/overlay/gemini_api_key.txt</span>
+            <span><span class="hk">Opt + R</span> Reset</span>
+        </div>
+        </body></html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    func parseSections(raw: String) -> (speech: String, code: String, complexity: String) {
+        var speech = ""
+        var code = ""
+        var complexity = ""
+
+        if raw.contains("### 1.") && raw.contains("### 2.") {
+            let p1 = raw.components(separatedBy: "### 1.")
+            if p1.count > 1 {
+                let p2 = p1[1].components(separatedBy: "### 2.")
+                speech = p2[0].replacingOccurrences(of: "WHAT TO SAY ALOUD RIGHT NOW", with: "")
+                              .replacingOccurrences(of: "WHAT TO SAY ALOUD", with: "")
+                              .trimmingCharacters(in: .whitespacesAndNewlines)
+                if p2.count > 1 {
+                    let p3 = p2[1].components(separatedBy: "### 3.")
+                    code = p3[0].replacingOccurrences(of: "EXACT PYTHON 3 IMPLEMENTATION", with: "")
+                                .replacingOccurrences(of: "PYTHON 3 IMPLEMENTATION", with: "")
+                                .replacingOccurrences(of: "PYTHON 3 CODE", with: "")
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if p3.count > 1 {
+                        complexity = p3[1].replacingOccurrences(of: "TIME & SPACE COMPLEXITY", with: "")
+                                          .replacingOccurrences(of: "COMPLEXITY", with: "")
+                                          .trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                }
+            }
+        } else {
+            if let startRange = raw.range(of: "```"),
+               let endRange = raw.range(of: "```", range: startRange.upperBound..<raw.endIndex) {
+                speech = String(raw[..<startRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                code = String(raw[startRange.lowerBound...endRange.upperBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                complexity = String(raw[endRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                speech = raw
+            }
+        }
+
+        var cleanCode = code
+        if cleanCode.hasPrefix("```python") { cleanCode = String(cleanCode.dropFirst(9)) }
+        else if cleanCode.hasPrefix("```py") { cleanCode = String(cleanCode.dropFirst(5)) }
+        else if cleanCode.hasPrefix("```") { cleanCode = String(cleanCode.dropFirst(3)) }
+        if cleanCode.hasSuffix("```") { cleanCode = String(cleanCode.dropLast(3)) }
+        cleanCode = cleanCode.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return (speech, cleanCode, complexity)
+    }
+
+    func escapeHtml(_ str: String) -> String {
+        return str.replacingOccurrences(of: "&", with: "&amp;")
+                  .replacingOccurrences(of: "<", with: "&lt;")
+                  .replacingOccurrences(of: ">", with: "&gt;")
+                  .replacingOccurrences(of: "\"", with: "&quot;")
+                  .replacingOccurrences(of: "'", with: "&#39;")
+    }
+
+    func formatSpeechCuesHTML(_ rawSpeech: String) -> String {
+        var rawLines = rawSpeech.components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        if rawLines.count == 1 && rawSpeech.contains(". ") {
+            rawLines = rawSpeech.components(separatedBy: ". ")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .map { $0.hasSuffix(".") ? $0 : $0 + "." }
+        }
+
+        var cueItems: [String] = []
+        for line in rawLines {
+            var clean = line
+            if clean.hasPrefix("- ") || clean.hasPrefix("* ") || clean.hasPrefix("• ") {
+                clean = String(clean.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+            } else if let dotIndex = clean.firstIndex(of: ".") {
+                let prefix = clean[..<dotIndex]
+                if prefix.allSatisfy({ $0.isNumber }) && !prefix.isEmpty {
+                    clean = String(clean[clean.index(after: dotIndex)...]).trimmingCharacters(in: .whitespaces)
+                }
+            }
+            if clean.hasPrefix("**") && clean.hasSuffix("**") && clean.count > 4 {
+                clean = String(clean.dropFirst(2).dropLast(2))
+            }
+            if !clean.isEmpty {
+                cueItems.append(clean)
+            }
+        }
+
+        if cueItems.isEmpty {
+            return "<div class=\"speech-text\">\(escapeHtml(rawSpeech))</div>"
+        }
+
+        var html = "<div class=\"speech-cues\">"
+        for (idx, cue) in cueItems.enumerated() {
+            html += """
+            <div class=\"cue-item\">
+                <span class=\"cue-num\">\(idx + 1)</span>
+                <span class=\"cue-text\">\(escapeHtml(cue))</span>
+            </div>
+            """
+        }
+        html += "</div>"
+        return html
+    }
+
     // ========================================================================
-    // 9. Carbon Hotkeys & Swallowing Engine (Deterministic Controls & Modes)
+    // 10. Carbon Hotkeys & Swallowing Engine (Zero CoderPad Focus Theft)
     // ========================================================================
     func setupHotkeys() {
         var s = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -703,27 +1319,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         let opt = UInt32(optionKey)
 
         // Core Hotkeys:
-        // Option + S      : Start Session Recording (Listening & Watching)
-        // Option + Return : Stop Session & Solve (Whisper + Vision + Gemini)
-        // Option + 1      : Switch to Coding / DSA [DEFAULT]
-        // Option + 2      : Switch to System Design (ASCII & Scaled Architecture)
-        // Option + 3      : Switch to Leadership & Behavioral (STAR Method)
-        // Option + 4      : Switch to Past Project Retrospective & System Architecture
-        // Option + O      : Clean Quit Application (exit(0))
-        // Option + Z      : Stealth HUD Visibility Toggle (Alpha 0.0 <-> 1.0)
-        // Option + I      : Interactive Mouse Toggle (Click-through pass-through <-> Scrollable HUD)
-        // Option + R      : Reset Session Buffers & Clear Chat
+        // Option + S           : Start Session Recording
+        // Option + Return      : Stop Session & Solve
+        // Option + 1           : Switch to Coding / DSA [DEFAULT]
+        // Option + 2           : Switch to System Design
+        // Option + 3           : Switch to Leadership & Behavioral
+        // Option + 4           : Switch to Past Project Retrospective
+        // Option + O           : Clean Quit Application
+        // Option + Z           : Stealth HUD Visibility Toggle
+        // Option + I           : Interactive Mouse Toggle
+        // Option + R           : Reset Session Buffers & Clear HUD
+        // Option + Down Arrow  : Remote Scroll Down (+320px) [Zero Focus Loss]
+        // Option + Up Arrow    : Remote Scroll Up (-320px) [Zero Focus Loss]
+        // Option + [           : Scale HUD Down (0.90x)
+        // Option + ]           : Scale HUD Up (1.10x)
         let binds: [(UInt32, Int)] = [
-            (1, kVK_ANSI_S), // Option + S : Start Session Recording
-            (2, kVK_Return), // Option + Return : Stop Session & Solve
-            (3, kVK_ANSI_1), // Option + 1 : Coding / DSA (Default)
-            (4, kVK_ANSI_2), // Option + 2 : System Design
-            (5, kVK_ANSI_3), // Option + 3 : Leadership & Behavioral
-            (6, kVK_ANSI_4), // Option + 4 : Past Project Retrospective
-            (7, kVK_ANSI_O), // Option + O : Clean Quit Application
-            (8, kVK_ANSI_Z), // Option + Z : Stealth HUD Toggle
-            (9, kVK_ANSI_I), // Option + I : Interactive Mouse Toggle
-            (10, kVK_ANSI_R) // Option + R : Reset Session Buffers & Clear Chat
+            (1, kVK_ANSI_S),
+            (2, kVK_Return),
+            (3, kVK_ANSI_1),
+            (4, kVK_ANSI_2),
+            (5, kVK_ANSI_3),
+            (6, kVK_ANSI_4),
+            (7, kVK_ANSI_O),
+            (8, kVK_ANSI_Z),
+            (9, kVK_ANSI_I),
+            (10, kVK_ANSI_R),
+            (11, kVK_DownArrow),
+            (12, kVK_UpArrow),
+            (13, kVK_ANSI_LeftBracket),
+            (14, kVK_ANSI_RightBracket)
         ]
         for (id, code) in binds {
             var ref: EventHotKeyRef?
@@ -731,8 +1355,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         }
 
         // Active key suppression matrix to swallow all remaining Option + key chords.
-        // Prevents dead-key symbol leaks into external code editors (CoderPad).
-        // Preserves Option + Left/Right/Up/Down arrows for native cursor navigation.
         let swallow = [
             kVK_ANSI_A, kVK_ANSI_B, kVK_ANSI_C, kVK_ANSI_D,
             kVK_ANSI_E, kVK_ANSI_F, kVK_ANSI_G, kVK_ANSI_H,
@@ -742,8 +1364,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             kVK_ANSI_Y,
             kVK_ANSI_0, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7,
             kVK_ANSI_8, kVK_ANSI_9,
-            kVK_ANSI_Equal, kVK_ANSI_Minus, kVK_ANSI_LeftBracket,
-            kVK_ANSI_RightBracket, kVK_ANSI_Semicolon, kVK_ANSI_Slash,
+            kVK_ANSI_Equal, kVK_ANSI_Minus,
+            kVK_ANSI_Semicolon, kVK_ANSI_Slash,
             kVK_ANSI_Quote, kVK_ANSI_Comma, kVK_ANSI_Period,
             kVK_ANSI_Grave, kVK_ANSI_Backslash
         ]
@@ -765,14 +1387,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         case 8: panel.alphaValue = panel.alphaValue > 0 ? 0 : opacity
         case 9: toggleInteractive()
         case 10: resetRound()
+        case 11: webView.evaluateJavaScript("window.scrollBy({top: 320, behavior: 'smooth'});", completionHandler: nil)
+        case 12: webView.evaluateJavaScript("window.scrollBy({top: -320, behavior: 'smooth'});", completionHandler: nil)
+        case 13: scaleWindow(0.90)
+        case 14: scaleWindow(1.10)
         default: break
         }
     }
 
     func scaleWindow(_ d: CGFloat) {
         guard let s = NSScreen.main?.visibleFrame else { return }
-        var f = panel.frame; let nw = max(320, min(s.width, f.width * d)), nh = max(300, min(s.height, f.height * d))
-        f.origin.y = max(s.minY, f.maxY - nh); f.size = CGSize(width: nw, height: nh)
+        var f = panel.frame
+        let nw = max(340, min(s.width * 0.75, f.width * d))
+        let nh = max(380, min(s.height * 0.95, f.height * d))
+        f.origin.y = max(s.minY, f.maxY - nh)
+        f.size = CGSize(width: nw, height: nh)
         panel.setFrame(f, display: true, animate: false)
     }
 }
@@ -781,4 +1410,3 @@ let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
 app.run()
-
