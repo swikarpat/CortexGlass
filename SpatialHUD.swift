@@ -552,12 +552,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     }
 
     // ========================================================================
-    // 6. High-Speed Silent Screen Capture (Apple Vision OCR)
+    // 6. High-Speed Silent Screen Capture (Apple Vision OCR with Zero Self-Capture)
     // ========================================================================
+    private static let hudScrubKeywords = [
+        "cortexglass", "what to say aloud", "exact python 3", "time & space complexity",
+        "quick operational guide", "direct gemini rest", "spatialhud", "opt + s", "opt + return"
+    ]
+
     func captureScreenText() async -> String {
         do {
+            // Guarantee 100% Zero HUD Self-Capture:
+            // Temporarily set HUD alphaValue = 0 so macOS WindowServer renders ONLY the background/CoderPad
+            let savedAlpha = await MainActor.run { () -> CGFloat in
+                let current = self.panel.alphaValue
+                self.panel.alphaValue = 0
+                return current
+            }
+
+            // 25ms yield allows macOS WindowServer compositor to refresh backing framebuffer
+            try? await Task.sleep(nanoseconds: 25_000_000)
+
             let c = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            guard let d = c.displays.first else { return "" }
+            guard let d = c.displays.first else {
+                await MainActor.run { self.panel.alphaValue = savedAlpha }
+                return ""
+            }
             let myPID = ProcessInfo.processInfo.processIdentifier
             let f = SCContentFilter(display: d, excludingWindows: c.windows.filter { $0.owningApplication?.processID == myPID })
 
@@ -567,15 +586,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             cfg.showsCursor = false
 
             let img = try await SCScreenshotManager.captureImage(contentFilter: f, configuration: cfg)
+
+            // Immediately restore HUD window to exact user opacity
+            await MainActor.run {
+                self.panel.alphaValue = savedAlpha
+            }
+
             let req = VNRecognizeTextRequest()
             req.recognitionLevel = .accurate
             req.usesLanguageCorrection = false
             try VNImageRequestHandler(cgImage: img, options: [:]).perform([req])
 
-            return (req.results ?? []).compactMap { $0.topCandidates(1).first?.string }
-                .joined(separator: "\n")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let lines = (req.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+                .filter { line in
+                    let lower = line.lowercased()
+                    return !AppDelegate.hudScrubKeywords.contains { lower.contains($0) }
+                }
+
+            return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         } catch {
+            await MainActor.run {
+                self.panel.alphaValue = self.opacity
+            }
             return ""
         }
     }
