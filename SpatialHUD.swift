@@ -1319,17 +1319,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             </div>
         </div>
         <div class="card">
-            <div class="card-label label-speech"><span>QUICK OPERATIONAL GUIDE (OPT-KEY ONLY)</span></div>
+            <div class="card-label label-speech"><span>QUICK OPERATIONAL GUIDE</span></div>
             <ul style="padding-left: 18px; font-size: 12px; color: var(--text); line-height: 1.7;">
                 <li><span class="hk">Opt + S</span> : Start session recording (interviewer speech + screen)</li>
                 <li><span class="hk">Opt + Return</span> : Stop & solve instantly (streams answer in ~1.5s)</li>
-                <li><span class="hk">Opt + Down / Up</span> : Smooth scroll HUD content</li>
-                <li><span class="hk">Opt + Left / Right</span> : Move HUD left / right (also <span class="hk">Opt+H/L</span>)</li>
-                <li><span class="hk">Opt + U / D</span> : Move HUD up / down (also <span class="hk">Opt+K/J</span>)</li>
-                <li><span class="hk">Opt + 5 / 6</span> : Snap HUD to Left / Right screen edge</li>
-                <li><span class="hk">Opt + [ / ]</span> or <span class="hk">- / =</span> : Scale HUD smaller / bigger</li>
+                <li><span class="hk">Opt + -</span> : Make HUD more transparent (read behind HUD)</li>
+                <li><span class="hk">Opt + =</span> : Make HUD more solid / opaque</li>
                 <li><span class="hk">Opt + 1..4</span> : Switch mode (Coding, SysDesign, Behavioral, Project)</li>
-                <li><span class="hk">Opt + R</span> : Reset session • <span class="hk">Opt + Z</span> Stealth Hide • <span class="hk">Opt + O</span> Quit</li>
+                <li><span class="hk">Opt + Z</span> : Stealth Hide / Show • <span class="hk">Opt + R</span> : Reset • <span class="hk">Opt + O</span> : Quit</li>
+                <li><span class="hk">Mouse Drag</span> : Click & drag top header to move anywhere</li>
+                <li><span class="hk">Mouse Resize</span> : Drag any edge or corner to resize</li>
+                <li><span class="hk">Trackpad Scroll</span> : Two-finger scroll content</li>
             </ul>
         </div>
         <div class="footer">
@@ -1702,8 +1702,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         case 10: resetRound()
         case 11: webView.evaluateJavaScript("window.scrollBy({top: 320, behavior: 'smooth'});", completionHandler: nil)
         case 12: webView.evaluateJavaScript("window.scrollBy({top: -320, behavior: 'smooth'});", completionHandler: nil)
-        case 13, 15: scaleWindow(0.90) // Opt + [ or Opt + -
-        case 14, 16: scaleWindow(1.10) // Opt + ] or Opt + =
+        case 13: scaleWindow(0.90) // Opt + [
+        case 14: scaleWindow(1.10) // Opt + ]
+        case 15: adjustOpacity(-0.10) // Opt + - : Decrease Opacity (more transparent / see-through)
+        case 16: adjustOpacity(+0.10) // Opt + = : Increase Opacity (more solid / opaque)
         case 17, 19: moveWindow(dx: -60, dy: 0) // Opt + Left Arrow or Opt + H
         case 18, 20: moveWindow(dx: 60, dy: 0)  // Opt + Right Arrow or Opt + L
         case 21, 23: moveWindow(dx: 0, dy: 60)  // Opt + K or Opt + U (Up)
@@ -1714,6 +1716,48 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         case 28: snapToCorner(.topRight)        // Opt + 8
         default: break
         }
+    }
+
+    // Zero-Focus Opacity & Transparency Control (Read behind HUD)
+    func adjustOpacity(_ delta: CGFloat) {
+        opacity = min(1.0, max(0.20, opacity + delta))
+        panel.alphaValue = opacity
+        let pct = Int(opacity * 100)
+        let js = """
+        (function() {
+            var el = document.getElementById('hud-opacity-toast');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'hud-opacity-toast';
+                el.style.position = 'fixed';
+                el.style.bottom = '16px';
+                el.style.right = '16px';
+                el.style.background = 'rgba(15, 23, 42, 0.90)';
+                el.style.color = '#38bdf8';
+                el.style.border = '1px solid rgba(56, 189, 248, 0.4)';
+                el.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+                el.style.padding = '5px 12px';
+                el.style.borderRadius = '6px';
+                el.style.fontSize = '11px';
+                el.style.fontWeight = '700';
+                el.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif";
+                el.style.zIndex = '99999';
+                el.style.pointerEvents = 'none';
+                el.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                document.body.appendChild(el);
+            }
+            el.textContent = '🌓 HUD OPACITY: ' + \(pct) + '%';
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0)';
+            clearTimeout(window.__opacityToastTimer);
+            window.__opacityToastTimer = setTimeout(function() {
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(6px)';
+            }, 1200);
+        })();
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+        print("🌓 Spatial HUD Opacity: \(pct)%")
     }
 
     // Zero-Focus Window Repositioning & Resizing Engine

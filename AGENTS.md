@@ -77,21 +77,19 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
 | :--- | :--- | :--- |
 | **Option + S** | Start Session Recording | Engages manual audio sample accumulation and caches baseline screen OCR. HUD border turns Vivid Amber/Red. |
 | **Option + Return** | Stop Session & Solve | Halts accumulation, runs Whisper ANE + Vision OCR in parallel, streams Gemini REST response into HUD. Border turns Neon Gold. |
-| **Option + Down / Up** | Remote Scroll Content | Smoothly scrolls HUD downward (+320px) or upward (-320px) without stealing window focus from CoderPad. |
-| **Option + Left / Right** | Move HUD Left / Right | Nudges HUD Left (-60px) or Right (+60px) with Zero Focus Theft (also accessible via **`Option + H / L`**). |
-| **Option + U / D** | Move HUD Up / Down | Nudges HUD Up (+60px) or Down (-60px) with Zero Focus Theft (also accessible via **`Option + K / J`**). |
-| **Option + 5 / 6** | Snap Left / Right Edge | Instantly snaps HUD to Left (`5`) or Right (`6`, Default) screen edge with Zero Focus Theft. |
-| **Option + 7 / 8** | Snap Corner | Instantly snaps HUD to Top-Left (`7`) or Top-Right (`8`) corner with Zero Focus Theft. |
-| **Option + [** or **Option + -** | Shrink HUD (0.90x) | In-place scale down anchored within visible screen bounds with Zero Focus Theft. |
-| **Option + ]** or **Option + =** | Expand HUD (1.10x) | In-place scale up anchored within visible screen bounds with Zero Focus Theft. |
+| **Option + -** | Decrease Opacity (-0.10) | Lowers HUD window opacity in-place down to minimum 20% ghost mode to read code/windows directly behind HUD. |
+| **Option + =** | Increase Opacity (+0.10) | Increases HUD window opacity in-place up to 100% solid Daylight glassmorphism. |
 | **Option + 1** | Switch to Coding / DSA | Locks mode to **Data Structures & Algorithms** [Strict Default]. Daylight Sky Blue border. |
 | **Option + 2** | Switch to System Design | Locks mode to **System Design (ASCII & Scaled Architecture)**. Daylight Violet border. |
 | **Option + 3** | Switch to Behavioral | Locks mode to **Leadership & Behavioral (STAR Method)**. Daylight Rose border. |
 | **Option + 4** | Switch to Past Project | Locks mode to **Past Project Retrospective & System Architecture**. Daylight Amber border. |
-| **Option + O** | Clean Quit Application | Cleanly stops capture, unlocks `/tmp/com.swikar.spatialhud.lock`, and terminates (`exit(0)`). |
-| **Option + Z** | Stealth HUD Visibility Toggle | Instantly toggles the headless HUD between fully visible and 100% alpha-transparent. |
-| **Option + I** | Interactive Click-Through Toggle | Toggles between default mouse control (drag/resize/scroll with Zero Focus Theft) and locked click-through pass-through mode. |
+| **Option + Z** | Stealth HUD Visibility Toggle | Instantly toggles the headless HUD between fully visible (at current opacity) and 100% alpha-transparent. |
 | **Option + R** | Reset Session & Buffers | Clears problem state, resets solve count to 0, flushes audio/OCR caches, restores HUD to READY state. |
+| **Option + O** | Clean Quit Application | Cleanly stops capture, unlocks `/tmp/com.swikar.spatialhud.lock`, and terminates (`exit(0)`). |
+| **Mouse Drag** | Window Move | Click and drag anywhere along the top header bar (top 85px) to move HUD across the screen with Zero Focus Theft. |
+| **Mouse Resize** | Window Resize | Drag any window edge or corner to resize with Zero Focus Theft. |
+| **Trackpad** | Content Scroll | Two-finger smooth scrolling with Zero Focus Theft. |
+| **Option + [ / ]** | Scale HUD (0.90x / 1.10x) | Keyboard in-place scale down/up anchored within visible screen bounds. |
 
 ### SpatialVision Diagnostic HUD & Autonomous Typer Hotkeys
 
