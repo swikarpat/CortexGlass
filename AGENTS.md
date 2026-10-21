@@ -203,15 +203,13 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
 
 * **Compile Multimodal Ambient Engine**:
   `swiftc -O SpatialHUD.swift -o SpatialHUD`
-* **Bundle as Native macOS Application**:
-  `cp SpatialHUD SpatialHUD.app/Contents/MacOS/SpatialHUD && cp -R SpatialHUD.app /Applications/ && cp -R SpatialHUD.app ~/Desktop/`
-* **Launch Without Antigravity IDE (3 Ways)**:
-  1. **Spotlight Search**: Press `Cmd + Space`, type `SpatialHUD`, and press `Return`. Runs silently in background with zero dock icon (`LSUIElement = true`).
-  2. **Desktop App**: Double-click `SpatialHUD.app` on `~/Desktop` or in `/Applications`.
-  3. **Desktop 1-Click Script**: Double-click `Start_SpatialHUD.command` on `~/Desktop` to launch and auto-close terminal.
+* **Deploy to macOS Applications**:
+  `cp SpatialHUD /Applications/SpatialHUD.app/Contents/MacOS/SpatialHUD && touch /Applications/SpatialHUD.app`
+* **Launch Without Antigravity IDE**:
+  - **Spotlight Search (Recommended Default)**: Press **`Cmd + Space`**, type **`SpatialHUD`**, and press **`Return`**. Runs silently in background with zero dock icon (`LSUIElement = true`).
+  - **Finder**: Open `/Applications/SpatialHUD.app`.
 * **Stop Application Without Antigravity IDE**:
   - Press **`Option + O`** directly from keyboard.
-  - Or double-click `Stop_SpatialHUD.command` on `~/Desktop`.
 * **Compile On-Device Neural Vision Engine**:
   `swiftc -O SpatialVision.swift -o SpatialVision`
 
