@@ -77,10 +77,11 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
 | :--- | :--- | :--- |
 | **Option + S** | Start Session Recording | Engages manual audio sample accumulation and caches baseline screen OCR. HUD border turns Vivid Amber/Red. |
 | **Option + Return** | Stop Session & Solve | Halts accumulation, runs Whisper ANE + Vision OCR in parallel, streams Gemini REST response into HUD. Border turns Neon Gold. |
-| **Option + Down** | Remote Scroll Down (+320px) | Smoothly scrolls HUD downward without stealing window focus from CoderPad. |
-| **Option + Up** | Remote Scroll Up (-320px) | Smoothly scrolls HUD upward without stealing window focus from CoderPad. |
-| **Ctrl + Option + Arrows** | Move HUD (Zero Focus Theft) | Nudges HUD Left/Right/Up/Down by 60px smoothly within visible screen bounds without stealing browser/CoderPad cursor focus. |
-| **Ctrl + Option + 1..4** | Snap HUD to Corners | Instantly snaps HUD to Top-Left (`1`), Top-Right (`2`, Default), Bottom-Left (`3`), or Bottom-Right (`4`) with Zero Focus Theft. |
+| **Option + Down / Up** | Remote Scroll Content | Smoothly scrolls HUD downward (+320px) or upward (-320px) without stealing window focus from CoderPad. |
+| **Option + Left / Right** | Move HUD Left / Right | Nudges HUD Left (-60px) or Right (+60px) with Zero Focus Theft (also accessible via **`Option + H / L`**). |
+| **Option + U / D** | Move HUD Up / Down | Nudges HUD Up (+60px) or Down (-60px) with Zero Focus Theft (also accessible via **`Option + K / J`**). |
+| **Option + 5 / 6** | Snap Left / Right Edge | Instantly snaps HUD to Left (`5`) or Right (`6`, Default) screen edge with Zero Focus Theft. |
+| **Option + 7 / 8** | Snap Corner | Instantly snaps HUD to Top-Left (`7`) or Top-Right (`8`) corner with Zero Focus Theft. |
 | **Option + [** or **Option + -** | Shrink HUD (0.90x) | In-place scale down anchored within visible screen bounds with Zero Focus Theft. |
 | **Option + ]** or **Option + =** | Expand HUD (1.10x) | In-place scale up anchored within visible screen bounds with Zero Focus Theft. |
 | **Option + 1** | Switch to Coding / DSA | Locks mode to **Data Structures & Algorithms** [Strict Default]. Daylight Sky Blue border. |
@@ -191,16 +192,19 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
 
 ---
 
-## 5. Build & Compilation Commands
+## 5. Build & Compilation Commands & Non-IDE Launching
 
 * **Compile Multimodal Ambient Engine**:
   `swiftc -O SpatialHUD.swift -o SpatialHUD`
+* **Bundle as Native macOS Application**:
+  `cp SpatialHUD SpatialHUD.app/Contents/MacOS/SpatialHUD && cp -R SpatialHUD.app /Applications/ && cp -R SpatialHUD.app ~/Desktop/`
+* **Launch Without Antigravity IDE (3 Ways)**:
+  1. **Spotlight Search**: Press `Cmd + Space`, type `SpatialHUD`, and press `Return`. Runs silently in background with zero dock icon (`LSUIElement = true`).
+  2. **Desktop App**: Double-click `SpatialHUD.app` on `~/Desktop` or in `/Applications`.
+  3. **Desktop 1-Click Script**: Double-click `Start_SpatialHUD.command` on `~/Desktop` to launch and auto-close terminal.
+* **Stop Application Without Antigravity IDE**:
+  - Press **`Option + O`** directly from keyboard.
+  - Or double-click `Stop_SpatialHUD.command` on `~/Desktop`.
 * **Compile On-Device Neural Vision Engine**:
   `swiftc -O SpatialVision.swift -o SpatialVision`
-* **Launch SpatialHUD Daemon (Default Daylight Theme)**:
-  `./SpatialHUD`
-* **Launch SpatialHUD Daemon (Dark Theme Override)**:
-  `HUD_THEME=dark ./SpatialHUD`
-* **Launch SpatialVision Daemon**:
-  `./SpatialVision`
 

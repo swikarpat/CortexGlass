@@ -298,7 +298,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         startAudioCapture()
         startScreenWatcher()
         print("🚀 CortexGlass Online: Direct Gemini REST Engine ACTIVE. Mode: \(currentMode.label)")
-        print("⌨️  Hotkeys: Opt+S (Record), Opt+Return (Stop & Solve), Opt+Down/Up (Scroll), Ctrl+Opt+Arrows (Move), Opt+[/] (Resize), Opt+R (Reset), Opt+O (Quit)")
+        print("⌨️  Hotkeys: Opt+S (Record), Opt+Return (Stop & Solve), Opt+Down/Up (Scroll), Opt+Left/Right (Move), Opt+[/] (Resize), Opt+R (Reset), Opt+O (Quit)")
     }
 
     // Dynamic Border Visual Feedback:
@@ -1194,16 +1194,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             </div>
         </div>
         <div class="card">
-            <div class="card-label label-speech"><span>QUICK OPERATIONAL GUIDE</span></div>
+            <div class="card-label label-speech"><span>QUICK OPERATIONAL GUIDE (OPT-KEY ONLY)</span></div>
             <ul style="padding-left: 18px; font-size: 12px; color: var(--text); line-height: 1.7;">
                 <li><span class="hk">Opt + S</span> : Start session recording (interviewer speech + screen)</li>
                 <li><span class="hk">Opt + Return</span> : Stop & solve instantly (streams answer in ~1.5s)</li>
-                <li><span class="hk">Opt + Down/Up</span> : Smooth scroll HUD (zero CoderPad focus loss)</li>
-                <li><span class="hk">Ctrl + Opt + Arrows</span> : Move HUD left / right / up / down (zero focus loss)</li>
-                <li><span class="hk">Opt + [ / ]</span> or <span class="hk">- / =</span> : Scale HUD smaller / bigger (zero focus loss)</li>
-                <li><span class="hk">Ctrl + Opt + 1..4</span> : Snap HUD to Corners (TL, TR, BL, BR)</li>
+                <li><span class="hk">Opt + Down / Up</span> : Smooth scroll HUD content</li>
+                <li><span class="hk">Opt + Left / Right</span> : Move HUD left / right (also <span class="hk">Opt+H/L</span>)</li>
+                <li><span class="hk">Opt + U / D</span> : Move HUD up / down (also <span class="hk">Opt+K/J</span>)</li>
+                <li><span class="hk">Opt + 5 / 6</span> : Snap HUD to Left / Right screen edge</li>
+                <li><span class="hk">Opt + [ / ]</span> or <span class="hk">- / =</span> : Scale HUD smaller / bigger</li>
                 <li><span class="hk">Opt + 1..4</span> : Switch mode (Coding, SysDesign, Behavioral, Project)</li>
-                <li><span class="hk">Opt + R</span> : Reset session • <span class="hk">Opt + Z</span> Stealth Hide • <span class="hk">Opt + I</span> Mouse</li>
+                <li><span class="hk">Opt + R</span> : Reset session • <span class="hk">Opt + Z</span> Stealth Hide • <span class="hk">Opt + O</span> Quit</li>
             </ul>
         </div>
         <div class="footer">
@@ -1350,7 +1351,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         \(complexityHtml)
         <div class="footer">
             <span>\(modelName)</span>
-            <span><span class="hk">Opt+Down/Up</span> Scroll • <span class="hk">Ctrl+Opt+Arrows</span> Move • <span class="hk">Opt+[/]</span> Resize</span>
+            <span><span class="hk">Opt+Down/Up</span> Scroll • <span class="hk">Opt+Left/Right</span> Move • <span class="hk">Opt+[/]</span> Resize</span>
         </div>
         <script>
             function copyCode() {
@@ -1478,14 +1479,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
 
         let opt = UInt32(optionKey)
 
-        // Core Hotkeys:
-        // Option + S           : Start Session Recording
-        // Option + Return      : Stop Session & Solve
-        // Option + 1           : Switch to Coding / DSA [DEFAULT]
-        // Option + 2           : Switch to System Design
-        // Option + 3           : Switch to Leadership & Behavioral
-        // Option + 4           : Switch to Past Project Retrospective
-        // Core Hotkeys:
+        // Core Hotkeys (Strictly Single Option Chords - No Ctrl required):
         // Option + S           : Start Session Recording
         // Option + Return      : Stop Session & Solve
         // Option + 1           : Switch to Coding / DSA [DEFAULT]
@@ -1496,10 +1490,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         // Option + Z           : Stealth HUD Visibility Toggle
         // Option + I           : Interactive Mouse Toggle
         // Option + R           : Reset Session Buffers & Clear HUD
-        // Option + Down Arrow  : Remote Scroll Down (+320px) [Zero Focus Loss]
-        // Option + Up Arrow    : Remote Scroll Up (-320px) [Zero Focus Loss]
-        // Option + [ or -      : Scale HUD Down (0.90x) [Zero Focus Loss]
-        // Option + ] or =      : Scale HUD Up (1.10x) [Zero Focus Loss]
+        // Option + Down Arrow  : Remote Scroll Down (+320px)
+        // Option + Up Arrow    : Remote Scroll Up (-320px)
+        // Option + [ or -      : Scale HUD Down (0.90x)
+        // Option + ] or =      : Scale HUD Up (1.10x)
+        // Option + Left Arrow  : Nudge HUD Left (-60px)
+        // Option + Right Arrow : Nudge HUD Right (+60px)
+        // Option + H           : Nudge HUD Left (-60px)
+        // Option + L           : Nudge HUD Right (+60px)
+        // Option + K or U      : Nudge HUD Up (+60px)
+        // Option + J or D      : Nudge HUD Down (-60px)
+        // Option + 5           : Snap Left Edge
+        // Option + 6           : Snap Right Edge (Default side)
+        // Option + 7           : Snap Top-Left Corner
+        // Option + 8           : Snap Top-Right Corner
         let binds: [(UInt32, Int)] = [
             (1, kVK_ANSI_S),
             (2, kVK_Return),
@@ -1516,49 +1520,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             (13, kVK_ANSI_LeftBracket),
             (14, kVK_ANSI_RightBracket),
             (15, kVK_ANSI_Minus),
-            (16, kVK_ANSI_Equal)
+            (16, kVK_ANSI_Equal),
+            (17, kVK_LeftArrow),
+            (18, kVK_RightArrow),
+            (19, kVK_ANSI_H),
+            (20, kVK_ANSI_L),
+            (21, kVK_ANSI_K),
+            (22, kVK_ANSI_J),
+            (23, kVK_ANSI_U),
+            (24, kVK_ANSI_D),
+            (25, kVK_ANSI_5),
+            (26, kVK_ANSI_6),
+            (27, kVK_ANSI_7),
+            (28, kVK_ANSI_8)
         ]
         for (id, code) in binds {
             var ref: EventHotKeyRef?
             RegisterEventHotKey(UInt32(code), opt, EventHotKeyID(signature: OSType(0x5350), id: id), GetApplicationEventTarget(), 0, &ref)
         }
 
-        // Control + Option Chords (Zero Focus Theft Window Repositioning & Snapping)
-        let optCtrl = UInt32(optionKey | controlKey)
-        let ctrlBinds: [(UInt32, Int)] = [
-            (21, kVK_LeftArrow),         // Ctrl + Opt + Left  : Move Left (-60px)
-            (22, kVK_RightArrow),        // Ctrl + Opt + Right : Move Right (+60px)
-            (23, kVK_UpArrow),           // Ctrl + Opt + Up    : Move Up (+60px)
-            (24, kVK_DownArrow),         // Ctrl + Opt + Down  : Move Down (-60px)
-            (25, kVK_ANSI_1),            // Ctrl + Opt + 1     : Snap Top-Left
-            (26, kVK_ANSI_2),            // Ctrl + Opt + 2     : Snap Top-Right (Default)
-            (27, kVK_ANSI_3),            // Ctrl + Opt + 3     : Snap Bottom-Left
-            (28, kVK_ANSI_4),            // Ctrl + Opt + 4     : Snap Bottom-Right
-            (29, kVK_ANSI_LeftBracket),  // Ctrl + Opt + [     : Shrink (0.90x)
-            (30, kVK_ANSI_RightBracket), // Ctrl + Opt + ]     : Expand (1.10x)
-            (31, kVK_ANSI_Minus),         // Ctrl + Opt + -     : Shrink (0.90x)
-            (32, kVK_ANSI_Equal)          // Ctrl + Opt + =     : Expand (1.10x)
-        ]
-        for (id, code) in ctrlBinds {
-            var ref: EventHotKeyRef?
-            RegisterEventHotKey(UInt32(code), optCtrl, EventHotKeyID(signature: OSType(0x5350), id: id), GetApplicationEventTarget(), 0, &ref)
-        }
-
         // Active key suppression matrix to swallow all remaining Option + key chords.
-        let swallow = [
-            kVK_ANSI_A, kVK_ANSI_B, kVK_ANSI_C, kVK_ANSI_D,
-            kVK_ANSI_E, kVK_ANSI_F, kVK_ANSI_G, kVK_ANSI_H,
-            kVK_ANSI_J, kVK_ANSI_K, kVK_ANSI_L, kVK_ANSI_M,
-            kVK_ANSI_N, kVK_ANSI_P, kVK_ANSI_Q, kVK_ANSI_T,
-            kVK_ANSI_U, kVK_ANSI_V, kVK_ANSI_W, kVK_ANSI_X,
-            kVK_ANSI_Y,
-            kVK_ANSI_0, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7,
+        let allCandidateKeys: [Int] = [
+            kVK_ANSI_A, kVK_ANSI_B, kVK_ANSI_C, kVK_ANSI_D, kVK_ANSI_E, kVK_ANSI_F, kVK_ANSI_G, kVK_ANSI_H,
+            kVK_ANSI_I, kVK_ANSI_J, kVK_ANSI_K, kVK_ANSI_L, kVK_ANSI_M, kVK_ANSI_N, kVK_ANSI_O, kVK_ANSI_P,
+            kVK_ANSI_Q, kVK_ANSI_R, kVK_ANSI_S, kVK_ANSI_T, kVK_ANSI_U, kVK_ANSI_V, kVK_ANSI_W, kVK_ANSI_X,
+            kVK_ANSI_Y, kVK_ANSI_Z,
+            kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7,
             kVK_ANSI_8, kVK_ANSI_9,
-            kVK_ANSI_Semicolon, kVK_ANSI_Slash,
-            kVK_ANSI_Quote, kVK_ANSI_Comma, kVK_ANSI_Period,
+            kVK_ANSI_Equal, kVK_ANSI_Minus, kVK_ANSI_LeftBracket, kVK_ANSI_RightBracket,
+            kVK_ANSI_Semicolon, kVK_ANSI_Slash, kVK_ANSI_Quote, kVK_ANSI_Comma, kVK_ANSI_Period,
             kVK_ANSI_Grave, kVK_ANSI_Backslash
         ]
-        for code in swallow {
+        let activeSet = Set(binds.map { $0.1 })
+        for code in allCandidateKeys where !activeSet.contains(code) {
             var ref: EventHotKeyRef?
             RegisterEventHotKey(UInt32(code), opt, EventHotKeyID(signature: OSType(0x5350), id: 9999), GetApplicationEventTarget(), 0, &ref)
         }
@@ -1578,16 +1572,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         case 10: resetRound()
         case 11: webView.evaluateJavaScript("window.scrollBy({top: 320, behavior: 'smooth'});", completionHandler: nil)
         case 12: webView.evaluateJavaScript("window.scrollBy({top: -320, behavior: 'smooth'});", completionHandler: nil)
-        case 13, 15, 29, 31: scaleWindow(0.90)
-        case 14, 16, 30, 32: scaleWindow(1.10)
-        case 21: moveWindow(dx: -60, dy: 0)
-        case 22: moveWindow(dx: 60, dy: 0)
-        case 23: moveWindow(dx: 0, dy: 60)
-        case 24: moveWindow(dx: 0, dy: -60)
-        case 25: snapToCorner(.topLeft)
-        case 26: snapToCorner(.topRight)
-        case 27: snapToCorner(.bottomLeft)
-        case 28: snapToCorner(.bottomRight)
+        case 13, 15: scaleWindow(0.90) // Opt + [ or Opt + -
+        case 14, 16: scaleWindow(1.10) // Opt + ] or Opt + =
+        case 17, 19: moveWindow(dx: -60, dy: 0) // Opt + Left Arrow or Opt + H
+        case 18, 20: moveWindow(dx: 60, dy: 0)  // Opt + Right Arrow or Opt + L
+        case 21, 23: moveWindow(dx: 0, dy: 60)  // Opt + K or Opt + U (Up)
+        case 22, 24: moveWindow(dx: 0, dy: -60) // Opt + J or Opt + D (Down)
+        case 25: snapToEdge(.left)              // Opt + 5
+        case 26: snapToEdge(.right)             // Opt + 6
+        case 27: snapToCorner(.topLeft)         // Opt + 7
+        case 28: snapToCorner(.topRight)        // Opt + 8
         default: break
         }
     }
@@ -1599,6 +1593,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         let newX = max(s.minX, min(s.maxX - f.width, f.origin.x + dx))
         let newY = max(s.minY, min(s.maxY - f.height, f.origin.y + dy))
         f.origin = CGPoint(x: newX, y: newY)
+        panel.setFrame(f, display: true, animate: false)
+    }
+
+    enum ScreenEdge { case left, right }
+    func snapToEdge(_ edge: ScreenEdge) {
+        guard let s = NSScreen.main?.visibleFrame else { return }
+        var f = panel.frame
+        let margin: CGFloat = 20
+        switch edge {
+        case .left:  f.origin.x = s.minX + margin
+        case .right: f.origin.x = s.maxX - f.width - margin
+        }
         panel.setFrame(f, display: true, animate: false)
     }
 
