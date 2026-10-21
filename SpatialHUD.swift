@@ -22,7 +22,7 @@ class SpatialPanel: NSPanel {
     init(rect: NSRect) {
         super.init(
             contentRect: rect,
-            styleMask: [.nonactivatingPanel, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .nonactivatingPanel, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -34,7 +34,15 @@ class SpatialPanel: NSPanel {
         backgroundColor = .clear
         hasShadow = true
         ignoresMouseEvents = false // Interactive mouse control ON by default (Zero CoderPad Focus Loss)
+        isMovable = true
         isMovableByWindowBackground = true
+
+        // Clean hidden titlebar for AppKit WindowServer dragging compatibility
+        titleVisibility = .hidden
+        titlebarAppearsTransparent = true
+        standardWindowButton(.closeButton)?.isHidden = true
+        standardWindowButton(.miniaturizeButton)?.isHidden = true
+        standardWindowButton(.zoomButton)?.isHidden = true
 
         contentView?.wantsLayer = true
         contentView?.layer?.cornerRadius = 14
@@ -45,6 +53,53 @@ class SpatialPanel: NSPanel {
     // Guarantee Zero Focus Theft: Never become Key or Main window so browser/CoderPad NEVER loses focus or triggers blur
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+}
+
+// Native Hardware Window Dragging Engine (Dual AppKit WindowServer & Real-Time Frame Tracking)
+class DraggableWKWebView: WKWebView {
+    private var dragStartMouseLocation: NSPoint?
+    private var dragStartWindowOrigin: NSPoint?
+    private var isDraggingWindow = false
+
+    // Receive first click immediately even when window is not key/active
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let loc = convert(event.locationInWindow, from: nil)
+        // In WKWebView (isFlipped == true):
+        // Top 85px is the HUD drag-bar & header, bottom 40px is the footer: initiate native window drag
+        if loc.y <= 85 || loc.y >= (bounds.height - 40) {
+            isDraggingWindow = true
+            dragStartMouseLocation = NSEvent.mouseLocation
+            dragStartWindowOrigin = window?.frame.origin
+            return
+        }
+        isDraggingWindow = false
+        super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        if isDraggingWindow, let startMouse = dragStartMouseLocation, let startOrigin = dragStartWindowOrigin, let win = window {
+            let currentMouse = NSEvent.mouseLocation
+            let deltaX = currentMouse.x - startMouse.x
+            let deltaY = currentMouse.y - startMouse.y
+            win.setFrameOrigin(NSPoint(x: startOrigin.x + deltaX, y: startOrigin.y + deltaY))
+            return
+        }
+        super.mouseDragged(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if isDraggingWindow {
+            isDraggingWindow = false
+            dragStartMouseLocation = nil
+            dragStartWindowOrigin = nil
+            return
+        }
+        super.mouseUp(with: event)
+    }
 }
 
 // ============================================================================
@@ -194,7 +249,7 @@ class GeminiRESTEngine {
 // ============================================================================
 class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStreamOutput {
     var panel: SpatialPanel!
-    var webView: WKWebView!
+    var webView: DraggableWKWebView!
     var opacity: CGFloat = 1.0
     var questionBuffer = ""
 
@@ -285,7 +340,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         let cfg = WKWebViewConfiguration()
         cfg.websiteDataStore = .nonPersistent()
 
-        webView = WKWebView(frame: panel.contentView!.bounds, configuration: cfg)
+        webView = DraggableWKWebView(frame: panel.contentView!.bounds, configuration: cfg)
         webView.autoresizingMask = [.width, .height]
         webView.navigationDelegate = self
         webView.setValue(false, forKey: "drawsBackground") // Transparent window backing
@@ -881,6 +936,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             ::-webkit-scrollbar { width: 6px; }
             ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
             ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+            .drag-bar {
+                width: 100%;
+                height: 12px;
+                margin-top: -6px;
+                margin-bottom: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: grab;
+                user-select: none;
+                -webkit-user-select: none;
+            }
+            .drag-handle {
+                width: 38px;
+                height: 4px;
+                border-radius: 2px;
+                background: var(--text-muted);
+                opacity: 0.35;
+                transition: all 0.15s ease;
+            }
+            .drag-bar:hover .drag-handle {
+                opacity: 0.9;
+                background: var(--accent);
+                width: 52px;
+            }
             .header {
                 display: flex;
                 align-items: center;
@@ -888,7 +968,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 padding-bottom: 12px;
                 border-bottom: 1px solid var(--header-border);
                 margin-bottom: 14px;
-                -webkit-app-region: drag;
                 cursor: grab;
                 user-select: none;
                 -webkit-user-select: none;
@@ -1061,6 +1140,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             }
             ::-webkit-scrollbar { width: 5px; }
             ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+            .drag-bar {
+                width: 100%;
+                height: 12px;
+                margin-top: -6px;
+                margin-bottom: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: grab;
+                user-select: none;
+                -webkit-user-select: none;
+            }
+            .drag-handle {
+                width: 38px;
+                height: 4px;
+                border-radius: 2px;
+                background: var(--text-muted);
+                opacity: 0.35;
+                transition: all 0.15s ease;
+            }
+            .drag-bar:hover .drag-handle {
+                opacity: 0.9;
+                background: var(--accent);
+                width: 52px;
+            }
             .header {
                 display: flex;
                 align-items: center;
@@ -1068,7 +1172,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 padding-bottom: 12px;
                 border-bottom: 1px solid var(--header-border);
                 margin-bottom: 14px;
-                -webkit-app-region: drag;
                 cursor: grab;
                 user-select: none;
                 -webkit-user-select: none;
@@ -1198,6 +1301,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
 
         let html = """
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
+        <div class="drag-bar"><div class="drag-handle"></div></div>
         <div class="header">
             <div class="brand">CORTEXGLASS HUD</div>
             <div class="mode-badge">\(currentMode.tag)</div>
@@ -1240,6 +1344,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     func renderRecordingHUD() {
         let html = """
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
+        <div class="drag-bar"><div class="drag-handle"></div></div>
         <div class="header">
             <div class="brand">CORTEXGLASS HUD</div>
             <div class="mode-badge">\(currentMode.tag)</div>
@@ -1269,6 +1374,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     func renderSolvingHUD() {
         let html = """
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
+        <div class="drag-bar"><div class="drag-handle"></div></div>
         <div class="header">
             <div class="brand">CORTEXGLASS HUD</div>
             <div class="mode-badge">\(currentMode.tag)</div>
@@ -1297,6 +1403,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         let roundLabel = solveCount > 0 ? "Follow-Up #\(solveCount)" : "Initial Problem"
         let html = """
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
+        <div class="drag-bar"><div class="drag-handle"></div></div>
         <div class="header">
             <div class="brand">CORTEXGLASS HUD</div>
             <div class="mode-badge">\(currentMode.tag) • \(roundLabel)</div>
@@ -1362,6 +1469,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
 
         let html = """
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
+        <div class="drag-bar"><div class="drag-handle"></div></div>
         <div class="header">
             <div class="brand">CORTEXGLASS HUD</div>
             <div class="mode-badge">\(currentMode.tag) • \(roundLabel)</div>
@@ -1392,6 +1500,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     func renderErrorHUD(_ errorMsg: String) {
         let html = """
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
+        <div class="drag-bar"><div class="drag-handle"></div></div>
         <div class="header">
             <div class="brand">CORTEXGLASS HUD</div>
             <div class="mode-badge">\(currentMode.tag)</div>
