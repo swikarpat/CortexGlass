@@ -32,6 +32,7 @@ class SpatialPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         isOpaque = false
         backgroundColor = .clear
+        hasShadow = true
         ignoresMouseEvents = true // Non-occluding click-through pass-through by default
         isMovableByWindowBackground = true
 
@@ -206,11 +207,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         case coding, systemDesign, behavioral, projectDeepDive
 
         var color: CGColor {
-            switch self {
-            case .coding:          return NSColor(red: 0.22, green: 0.74, blue: 0.97, alpha: 0.95).cgColor // Electric Cyan
-            case .systemDesign:    return NSColor(red: 0.65, green: 0.33, blue: 0.97, alpha: 0.95).cgColor // Neon Violet
-            case .behavioral:      return NSColor(red: 0.96, green: 0.25, blue: 0.37, alpha: 0.95).cgColor // Rose Red
-            case .projectDeepDive: return NSColor(red: 0.96, green: 0.62, blue: 0.04, alpha: 0.95).cgColor // Amber Gold
+            let isDaylight = ProcessInfo.processInfo.environment["HUD_THEME"] != "dark"
+            if isDaylight {
+                switch self {
+                case .coding:          return NSColor(red: 0.05, green: 0.55, blue: 0.90, alpha: 0.90).cgColor // Daylight Sky Blue
+                case .systemDesign:    return NSColor(red: 0.50, green: 0.25, blue: 0.85, alpha: 0.90).cgColor // Daylight Violet
+                case .behavioral:      return NSColor(red: 0.88, green: 0.20, blue: 0.35, alpha: 0.90).cgColor // Daylight Rose
+                case .projectDeepDive: return NSColor(red: 0.85, green: 0.50, blue: 0.05, alpha: 0.90).cgColor // Daylight Amber
+                }
+            } else {
+                switch self {
+                case .coding:          return NSColor(red: 0.22, green: 0.74, blue: 0.97, alpha: 0.95).cgColor // Electric Cyan
+                case .systemDesign:    return NSColor(red: 0.65, green: 0.33, blue: 0.97, alpha: 0.95).cgColor // Neon Violet
+                case .behavioral:      return NSColor(red: 0.96, green: 0.25, blue: 0.37, alpha: 0.95).cgColor // Rose Red
+                case .projectDeepDive: return NSColor(red: 0.96, green: 0.62, blue: 0.04, alpha: 0.95).cgColor // Amber Gold
+                }
             }
         }
 
@@ -287,19 +298,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         startAudioCapture()
         startScreenWatcher()
         print("🚀 CortexGlass Online: Direct Gemini REST Engine ACTIVE. Mode: \(currentMode.label)")
-        print("⌨️  Hotkeys: Opt+S (Record), Opt+Return (Stop & Solve), Opt+Down/Up (Scroll), Opt+R (Reset), Opt+O (Quit)")
+        print("⌨️  Hotkeys: Opt+S (Record), Opt+Return (Stop & Solve), Opt+Down/Up (Scroll), Ctrl+Opt+Arrows (Move), Opt+[/] (Resize), Opt+R (Reset), Opt+O (Quit)")
     }
 
     // Dynamic Border Visual Feedback:
     func updateBorder() {
+        let isDaylight = ProcessInfo.processInfo.environment["HUD_THEME"] != "dark"
         if panel.isInteractive {
-            panel.contentView?.layer?.borderColor = NSColor.white.cgColor
+            panel.contentView?.layer?.borderColor = isDaylight ?
+                NSColor(red: 0.10, green: 0.45, blue: 0.95, alpha: 1.0).cgColor :
+                NSColor.white.cgColor
             panel.contentView?.layer?.borderWidth = 2.5
         } else if isSessionRecording {
-            panel.contentView?.layer?.borderColor = NSColor(red: 0.95, green: 0.35, blue: 0.15, alpha: 1.0).cgColor // Vivid Amber/Red ACTIVE RECORDING
+            panel.contentView?.layer?.borderColor = isDaylight ?
+                NSColor(red: 0.88, green: 0.20, blue: 0.15, alpha: 1.0).cgColor :
+                NSColor(red: 0.95, green: 0.35, blue: 0.15, alpha: 1.0).cgColor // ACTIVE RECORDING
             panel.contentView?.layer?.borderWidth = 2.5
         } else if isSolving {
-            panel.contentView?.layer?.borderColor = NSColor(red: 1.0, green: 0.78, blue: 0.15, alpha: 1.0).cgColor // Neon Gold SOLVING / DELIBERATING
+            panel.contentView?.layer?.borderColor = isDaylight ?
+                NSColor(red: 0.85, green: 0.60, blue: 0.05, alpha: 1.0).cgColor :
+                NSColor(red: 1.0, green: 0.78, blue: 0.15, alpha: 1.0).cgColor // SOLVING
             panel.contentView?.layer?.borderWidth = 2.5
         } else {
             panel.contentView?.layer?.borderColor = currentMode.color
@@ -519,25 +537,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         if currentMode == .coding {
             if solveCount > 0 {
                 return """
-                ROLE: Senior Engineer coaching a candidate in live CoderPad interview follow-up.
+                ROLE: Senior Software Engineer in a live technical coding interview follow-up on CoderPad.
 
-                CRITICAL INSTRUCTION FOR "WHAT TO SAY ALOUD":
-                Sound 100% human, casual, and authentic. Never write textbook essays or formal paragraphs.
-                Write exactly 2 SHORT conversational bullet points in quotes (under 15 words each) representing natural human "thinking out loud":
-                - Bullet 1 [Direct Insight]: "Ah, if ..., we don't need ...—we can just ..."
-                - Bullet 2 [Trade-off & Next Step]: "That keeps time at O(...) while dropping space to O(...). Let me update that right here."
+                INTERVIEWER SPOKEN FOLLOW-UP QUERY:
+                "\(spokenInput)"
 
-                INTERVIEWER SPOKEN QUERY: "\(spokenInput)"
                 CURRENT CODE ON SCREEN:
                 \(screenContext)
 
+                CRITICAL INSTRUCTION FOR "WHAT TO SAY ALOUD RIGHT NOW":
+                Provide a cohesive, natural spoken paragraph (2-3 sentences) directly addressing the interviewer:
+                1. Acknowledge the constraint and state the optimal algorithmic adjustment (e.g., two-pointer, binary search, sliding window).
+                2. Explain the trade-off: how it achieves optimal auxiliary space while maintaining target time complexity.
+                3. Transition naturally to making the code amendment.
+
+                Keep it articulate, natural, and direct. Do NOT use fragmented micro-bullets, and do NOT use artificial slang or theatrical phrases like "that feels like a cheat". Write in clean first-person ("I").
+
                 OUTPUT FORMAT EXACTLY AS FOLLOWS:
                 ### 1. WHAT TO SAY ALOUD RIGHT NOW
-                (the 2 short conversational bullet points in quotes)
+                (the 2-3 sentence cohesive spoken paragraph)
 
                 ### 2. EXACT PYTHON 3 IMPLEMENTATION
                 ```python
-                # Only the modified function or patched code block
+                # Only the modified function or specific patched code block
                 ```
 
                 ### 3. TIME & SPACE COMPLEXITY
@@ -545,15 +567,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 """
             } else {
                 return """
-                ROLE: Senior Engineer coaching a candidate in a live technical coding interview on CoderPad.
-
-                CRITICAL INSTRUCTION FOR "WHAT TO SAY ALOUD":
-                Interviewers immediately detect and disqualify candidates who sound like they are reading textbook scripts or AI responses.
-                DO NOT write formal essays, paragraphs, or academic text.
-                Write exactly 3 SHORT, PUNCHY bullet points phrased as CASUAL HUMAN "THINKING OUT LOUD" (in quotes, under 15 words each):
-                - Bullet 1 [Clarify in plain English]: "Got it, so looking at this, the goal is..." (restate core objective simply)
-                - Bullet 2 [First instinct & Brute-force trade-off]: "My first thought is brute force with ..., but that would be O(N^2). We can do better..."
-                - Bullet 3 [Optimal Approach]: "If we use a ..., we can get this down to O(N) in a single pass. Let me start coding that."
+                ROLE: Senior Software Engineer in a live technical coding interview on CoderPad.
 
                 INTERVIEWER AUDIO:
                 "\(spokenInput)"
@@ -561,9 +575,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 CURRENT SCREEN / CODERPAD BUFFER:
                 \(screenContext)
 
+                CRITICAL INSTRUCTION FOR "WHAT TO SAY ALOUD RIGHT NOW":
+                Provide a cohesive, natural spoken paragraph (3-4 sentences) for the candidate to speak aloud before coding.
+                Structure it to reflect natural engineering thinking:
+                1. State your understanding of the problem and key constraints clearly.
+                2. Briefly note the baseline brute-force approach and its Big-O limitation.
+                3. State the optimal algorithmic approach, trade-off, and target time/space complexity.
+                4. Conclude with a natural transition into coding.
+
+                Keep it cohesive, articulate, and conversational. Do NOT use fragmented micro-bullets, and do NOT use artificial slang or theatrical phrases like "that feels like a cheat". Write in clean first-person ("I").
+
                 OUTPUT FORMAT EXACTLY AS FOLLOWS:
                 ### 1. WHAT TO SAY ALOUD RIGHT NOW
-                (the 3 natural conversational bullet points in quotes)
+                (the 3-4 sentence cohesive spoken paragraph)
 
                 ### 2. EXACT PYTHON 3 IMPLEMENTATION
                 ```python
@@ -800,189 +824,349 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     // ========================================================================
     // 9. Glassmorphism HUD HTML Renderer
     // ========================================================================
-    func baseCSS() -> String {
-        return """
-        :root {
-            --bg: #070a12;
-            --card: rgba(18, 24, 38, 0.85);
-            --border: rgba(56, 189, 248, 0.25);
-            --accent: #38bdf8;
-            --text: #f1f5f9;
-            --text-muted: #94a3b8;
-            --speech-bg: rgba(56, 189, 248, 0.09);
-            --speech-border: rgba(56, 189, 248, 0.35);
-            --code-bg: #0d121c;
-            --code-border: #1e293b;
-            --code-text: #7dd3fc;
-            --gold: #facc15;
-            --rose: #fb7185;
-            --green: #34d399;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
-            font-size: 13.5px;
-            line-height: 1.55;
-            padding: 16px;
-            user-select: text;
-            -webkit-user-select: text;
-            overflow-x: hidden;
-            overflow-y: auto;
-        }
-        ::-webkit-scrollbar { width: 5px; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-        .header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding-bottom: 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            margin-bottom: 14px;
-        }
-        .brand {
-            font-weight: 800;
-            font-size: 11px;
-            letter-spacing: 1.2px;
-            color: var(--accent);
-            text-transform: uppercase;
-        }
-        .mode-badge {
-            font-size: 10px;
-            font-weight: 700;
-            padding: 3px 8px;
-            border-radius: 6px;
-            background: rgba(56, 189, 248, 0.15);
-            border: 1px solid rgba(56, 189, 248, 0.35);
-            color: var(--accent);
-            letter-spacing: 0.5px;
-        }
-        .pill {
-            font-size: 10px;
-            font-weight: 700;
-            padding: 3px 8px;
-            border-radius: 6px;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .pill-ready { background: rgba(52, 211, 153, 0.15); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.3); }
-        .pill-rec { background: rgba(251, 113, 133, 0.18); color: var(--rose); border: 1px solid rgba(251, 113, 133, 0.4); animation: pulse 1.2s infinite; }
-        .pill-solve { background: rgba(250, 204, 21, 0.18); color: var(--gold); border: 1px solid rgba(250, 204, 21, 0.4); animation: pulse 1.2s infinite; }
-        .pill-latency { background: rgba(56, 189, 248, 0.15); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.35); }
-        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1.0; } 100% { opacity: 0.5; } }
+    func isDaylightTheme() -> Bool {
+        return ProcessInfo.processInfo.environment["HUD_THEME"] != "dark"
+    }
 
-        .card {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 14px 16px;
-            margin-bottom: 12px;
+    func baseCSS() -> String {
+        if isDaylightTheme() {
+            return """
+            :root {
+                --bg: rgba(255, 255, 255, 0.96);
+                --card: rgba(255, 255, 255, 0.92);
+                --border: rgba(203, 213, 225, 0.8);
+                --accent: #0284c7;
+                --text: #0f172a;
+                --text-muted: #64748b;
+                --speech-bg: linear-gradient(135deg, rgba(240, 249, 255, 0.95) 0%, rgba(224, 242, 254, 0.65) 100%);
+                --speech-border: rgba(56, 189, 248, 0.5);
+                --speech-text: #0f172a;
+                --code-bg: #f8fafc;
+                --code-border: #e2e8f0;
+                --code-text: #0f172a;
+                --gold: #b45309;
+                --gold-bg: rgba(245, 158, 11, 0.12);
+                --gold-border: rgba(245, 158, 11, 0.4);
+                --rose: #b91c1c;
+                --rose-bg: rgba(239, 68, 68, 0.12);
+                --rose-border: rgba(239, 68, 68, 0.35);
+                --green: #047857;
+                --green-bg: rgba(16, 185, 129, 0.12);
+                --green-border: rgba(16, 185, 129, 0.4);
+                --shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+                --header-border: rgba(0, 0, 0, 0.08);
+                --btn-bg: #ffffff;
+                --btn-border: #cbd5e1;
+                --btn-text: #475569;
+                --btn-hover-bg: #f1f5f9;
+                --btn-hover-text: #0f172a;
+                --hk-bg: #f1f5f9;
+                --hk-border: #cbd5e1;
+                --hk-text: #334155;
+            }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body {
+                background: var(--bg);
+                color: var(--text);
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+                font-size: 13.5px;
+                line-height: 1.55;
+                padding: 16px;
+                user-select: text;
+                -webkit-user-select: text;
+                overflow-x: hidden;
+                overflow-y: auto;
+                backdrop-filter: blur(28px) saturate(190%);
+                -webkit-backdrop-filter: blur(28px) saturate(190%);
+            }
+            ::-webkit-scrollbar { width: 6px; }
+            ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+            ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+            .header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding-bottom: 12px;
+                border-bottom: 1px solid var(--header-border);
+                margin-bottom: 14px;
+            }
+            .brand {
+                font-weight: 800;
+                font-size: 11px;
+                letter-spacing: 1.2px;
+                color: var(--accent);
+                text-transform: uppercase;
+            }
+            .mode-badge {
+                font-size: 10px;
+                font-weight: 700;
+                padding: 3px 8px;
+                border-radius: 6px;
+                background: rgba(14, 165, 233, 0.12);
+                border: 1px solid rgba(14, 165, 233, 0.35);
+                color: var(--accent);
+                letter-spacing: 0.5px;
+            }
+            .pill {
+                font-size: 10px;
+                font-weight: 700;
+                padding: 3px 8px;
+                border-radius: 6px;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+            }
+            .pill-ready { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+            .pill-rec { background: var(--rose-bg); color: var(--rose); border: 1px solid var(--rose-border); animation: pulse 1.2s infinite; }
+            .pill-solve { background: var(--gold-bg); color: var(--gold); border: 1px solid var(--gold-border); animation: pulse 1.2s infinite; }
+            .pill-latency { background: rgba(14, 165, 233, 0.12); color: var(--accent); border: 1px solid rgba(14, 165, 233, 0.35); }
+            @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1.0; } 100% { opacity: 0.6; } }
+
+            .card {
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 14px 16px;
+                margin-bottom: 12px;
+                box-shadow: var(--shadow);
+            }
+            .speech-card {
+                background: var(--speech-bg);
+                border: 1px solid var(--speech-border);
+                border-radius: 10px;
+                padding: 14px 16px;
+                margin-bottom: 12px;
+                box-shadow: var(--shadow);
+            }
+            .card-label {
+                font-size: 10.5px;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.8px;
+                margin-bottom: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+            .label-speech { color: #0284c7; }
+            .label-code { color: #7c3aed; }
+            .label-complexity { color: #059669; }
+            .speech-text {
+                font-size: 14px;
+                font-weight: 500;
+                color: var(--speech-text);
+                line-height: 1.65;
+            }
+            pre {
+                background: var(--code-bg);
+                border: 1px solid var(--code-border);
+                border-radius: 8px;
+                padding: 12px 14px;
+                overflow-x: auto;
+                font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+                font-size: 12.5px;
+                line-height: 1.5;
+                color: var(--code-text);
+            }
+            .copy-btn {
+                background: var(--btn-bg);
+                border: 1px solid var(--btn-border);
+                color: var(--btn-text);
+                border-radius: 5px;
+                padding: 3px 9px;
+                font-size: 10px;
+                cursor: pointer;
+                font-weight: 600;
+                transition: all 0.15s ease;
+            }
+            .copy-btn:hover { color: var(--btn-hover-text); background: var(--btn-hover-bg); }
+            .footer {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding-top: 10px;
+                border-top: 1px solid var(--header-border);
+                font-size: 10.5px;
+                color: var(--text-muted);
+                margin-top: 8px;
+            }
+            .hk {
+                background: var(--hk-bg);
+                border: 1px solid var(--hk-border);
+                border-radius: 4px;
+                padding: 1px 6px;
+                font-family: 'SF Mono', Menlo, monospace;
+                font-size: 9.5px;
+                color: var(--hk-text);
+                font-weight: 600;
+            }
+            """
+        } else {
+            return """
+            :root {
+                --bg: #070a12;
+                --card: rgba(18, 24, 38, 0.85);
+                --border: rgba(56, 189, 248, 0.25);
+                --accent: #38bdf8;
+                --text: #f1f5f9;
+                --text-muted: #94a3b8;
+                --speech-bg: rgba(56, 189, 248, 0.09);
+                --speech-border: rgba(56, 189, 248, 0.35);
+                --speech-text: #ffffff;
+                --code-bg: #0d121c;
+                --code-border: #1e293b;
+                --code-text: #7dd3fc;
+                --gold: #facc15;
+                --gold-bg: rgba(250, 204, 21, 0.18);
+                --gold-border: rgba(250, 204, 21, 0.4);
+                --rose: #fb7185;
+                --rose-bg: rgba(251, 113, 133, 0.18);
+                --rose-border: rgba(251, 113, 133, 0.4);
+                --green: #34d399;
+                --green-bg: rgba(52, 211, 153, 0.15);
+                --green-border: rgba(52, 211, 153, 0.3);
+                --shadow: none;
+                --header-border: rgba(255, 255, 255, 0.08);
+                --btn-bg: rgba(255, 255, 255, 0.08);
+                --btn-border: rgba(255, 255, 255, 0.15);
+                --btn-text: #94a3b8;
+                --btn-hover-bg: rgba(255, 255, 255, 0.15);
+                --btn-hover-text: #ffffff;
+                --hk-bg: rgba(255, 255, 255, 0.06);
+                --hk-border: rgba(255, 255, 255, 0.12);
+                --hk-text: #cbd5e1;
+            }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body {
+                background: var(--bg);
+                color: var(--text);
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+                font-size: 13.5px;
+                line-height: 1.55;
+                padding: 16px;
+                user-select: text;
+                -webkit-user-select: text;
+                overflow-x: hidden;
+                overflow-y: auto;
+            }
+            ::-webkit-scrollbar { width: 5px; }
+            ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+            .header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding-bottom: 12px;
+                border-bottom: 1px solid var(--header-border);
+                margin-bottom: 14px;
+            }
+            .brand {
+                font-weight: 800;
+                font-size: 11px;
+                letter-spacing: 1.2px;
+                color: var(--accent);
+                text-transform: uppercase;
+            }
+            .mode-badge {
+                font-size: 10px;
+                font-weight: 700;
+                padding: 3px 8px;
+                border-radius: 6px;
+                background: rgba(56, 189, 248, 0.15);
+                border: 1px solid rgba(56, 189, 248, 0.35);
+                color: var(--accent);
+                letter-spacing: 0.5px;
+            }
+            .pill {
+                font-size: 10px;
+                font-weight: 700;
+                padding: 3px 8px;
+                border-radius: 6px;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+            }
+            .pill-ready { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+            .pill-rec { background: var(--rose-bg); color: var(--rose); border: 1px solid var(--rose-border); animation: pulse 1.2s infinite; }
+            .pill-solve { background: var(--gold-bg); color: var(--gold); border: 1px solid var(--gold-border); animation: pulse 1.2s infinite; }
+            .pill-latency { background: rgba(56, 189, 248, 0.15); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.35); }
+            @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1.0; } 100% { opacity: 0.5; } }
+
+            .card {
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 14px 16px;
+                margin-bottom: 12px;
+            }
+            .speech-card {
+                background: var(--speech-bg);
+                border: 1px solid var(--speech-border);
+                border-radius: 10px;
+                padding: 14px 16px;
+                margin-bottom: 12px;
+            }
+            .card-label {
+                font-size: 10.5px;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.8px;
+                margin-bottom: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+            .label-speech { color: #38bdf8; }
+            .label-code { color: #a78bfa; }
+            .label-complexity { color: #34d399; }
+            .speech-text {
+                font-size: 14px;
+                font-weight: 500;
+                color: var(--speech-text);
+                line-height: 1.6;
+            }
+            pre {
+                background: var(--code-bg);
+                border: 1px solid var(--code-border);
+                border-radius: 8px;
+                padding: 12px 14px;
+                overflow-x: auto;
+                font-family: 'SF Mono', Menlo, Monaco, monospace;
+                font-size: 12.5px;
+                line-height: 1.5;
+                color: var(--code-text);
+            }
+            .copy-btn {
+                background: var(--btn-bg);
+                border: 1px solid var(--btn-border);
+                color: var(--btn-text);
+                border-radius: 4px;
+                padding: 2px 7px;
+                font-size: 9.5px;
+                cursor: pointer;
+                font-weight: 600;
+            }
+            .copy-btn:hover { color: var(--btn-hover-text); background: var(--btn-hover-bg); }
+            .footer {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding-top: 10px;
+                border-top: 1px solid var(--header-border);
+                font-size: 10px;
+                color: var(--text-muted);
+                margin-top: 8px;
+            }
+            .hk {
+                background: var(--hk-bg);
+                border: 1px solid var(--hk-border);
+                border-radius: 4px;
+                padding: 1px 5px;
+                font-family: 'SF Mono', monospace;
+                font-size: 9.5px;
+                color: var(--hk-text);
+            }
+            """
         }
-        .speech-card {
-            background: var(--speech-bg);
-            border: 1px solid var(--speech-border);
-            border-radius: 10px;
-            padding: 14px 16px;
-            margin-bottom: 12px;
-        }
-        .card-label {
-            font-size: 10.5px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .label-speech { color: #38bdf8; }
-        .label-code { color: #a78bfa; }
-        .label-complexity { color: #34d399; }
-        .speech-text {
-            font-size: 14px;
-            font-weight: 500;
-            color: #ffffff;
-            line-height: 1.6;
-        }
-        .speech-cues {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .cue-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            background: rgba(56, 189, 248, 0.08);
-            border-left: 3px solid #38bdf8;
-            padding: 9px 12px;
-            border-radius: 6px;
-            font-size: 13.5px;
-            font-weight: 500;
-            color: #f8fafc;
-            line-height: 1.5;
-        }
-        .cue-num {
-            background: rgba(56, 189, 248, 0.22);
-            color: #38bdf8;
-            font-size: 10.5px;
-            font-weight: 700;
-            border-radius: 50%;
-            width: 19px;
-            height: 19px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            margin-top: 1px;
-        }
-        .cue-text {
-            flex: 1;
-        }
-        pre {
-            background: var(--code-bg);
-            border: 1px solid var(--code-border);
-            border-radius: 8px;
-            padding: 12px 14px;
-            overflow-x: auto;
-            font-family: 'SF Mono', Menlo, Monaco, monospace;
-            font-size: 12.5px;
-            line-height: 1.5;
-            color: var(--code-text);
-        }
-        .copy-btn {
-            background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.15);
-            color: var(--text-muted);
-            border-radius: 4px;
-            padding: 2px 7px;
-            font-size: 9.5px;
-            cursor: pointer;
-            font-weight: 600;
-        }
-        .copy-btn:hover { color: #ffffff; background: rgba(255,255,255,0.15); }
-        .footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-top: 10px;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
-            font-size: 10px;
-            color: var(--text-muted);
-            margin-top: 8px;
-        }
-        .hk {
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 4px;
-            padding: 1px 5px;
-            font-family: 'SF Mono', monospace;
-            font-size: 9.5px;
-            color: #cbd5e1;
-        }
-        """
     }
 
     func renderIdleHUD() {
@@ -1000,7 +1184,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         </div>
         <div class="card" style="text-align: center; padding: 28px 16px;">
             <div style="font-size: 28px; margin-bottom: 8px;">🚀</div>
-            <div style="font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 6px;">Direct Gemini REST Engine Online</div>
+            <div style="font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 6px;">Direct Gemini REST Engine Online</div>
             <div style="font-size: 12px; color: var(--text-muted); max-width: 380px; margin: 0 auto 16px;">
                 Sub-2s latency streaming • On-device Whisper ANE • Screen OCR • Zero CoderPad focus theft
             </div>
@@ -1011,12 +1195,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         </div>
         <div class="card">
             <div class="card-label label-speech"><span>QUICK OPERATIONAL GUIDE</span></div>
-            <ul style="padding-left: 18px; font-size: 12px; color: #cbd5e1; line-height: 1.7;">
+            <ul style="padding-left: 18px; font-size: 12px; color: var(--text); line-height: 1.7;">
                 <li><span class="hk">Opt + S</span> : Start session recording (interviewer speech + screen)</li>
                 <li><span class="hk">Opt + Return</span> : Stop & solve instantly (streams answer in ~1.5s)</li>
-                <li><span class="hk">Opt + Down/Up</span> : Smooth scroll HUD (zero focus loss on CoderPad)</li>
-                <li><span class="hk">Opt + R</span> : Reset session for new question</li>
-                <li><span class="hk">Opt + 1..4</span> : Switch interview mode (Coding, SysDesign, Behavioral, Project)</li>
+                <li><span class="hk">Opt + Down/Up</span> : Smooth scroll HUD (zero CoderPad focus loss)</li>
+                <li><span class="hk">Ctrl + Opt + Arrows</span> : Move HUD left / right / up / down (zero focus loss)</li>
+                <li><span class="hk">Opt + [ / ]</span> or <span class="hk">- / =</span> : Scale HUD smaller / bigger (zero focus loss)</li>
+                <li><span class="hk">Ctrl + Opt + 1..4</span> : Snap HUD to Corners (TL, TR, BL, BR)</li>
+                <li><span class="hk">Opt + 1..4</span> : Switch mode (Coding, SysDesign, Behavioral, Project)</li>
+                <li><span class="hk">Opt + R</span> : Reset session • <span class="hk">Opt + Z</span> Stealth Hide • <span class="hk">Opt + I</span> Mouse</li>
             </ul>
         </div>
         <div class="footer">
@@ -1036,15 +1223,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             <div class="mode-badge">\(currentMode.tag)</div>
             <div class="pill pill-rec">🎙️ RECORDING...</div>
         </div>
-        <div class="card" style="padding: 24px 16px; border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.06);">
+        <div class="card" style="padding: 24px 16px; border-color: var(--rose-border); background: var(--rose-bg);">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
                 <span style="font-size: 24px;">🎙️</span>
                 <div>
-                    <div style="font-size: 14px; font-weight: 700; color: #fff;">Listening to Interviewer Question...</div>
+                    <div style="font-size: 14px; font-weight: 700; color: var(--text);">Listening to Interviewer Question...</div>
                     <div style="font-size: 11.5px; color: var(--text-muted);">Accumulating audio samples and caching screen context</div>
                 </div>
             </div>
-            <div style="font-size: 11.5px; color: #cbd5e1; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 6px;">
+            <div style="font-size: 11.5px; color: var(--text); background: var(--card); border: 1px solid var(--border); padding: 8px 12px; border-radius: 6px;">
                 Press <span class="hk">Opt + Return</span> when the interviewer finishes speaking to solve.
             </div>
         </div>
@@ -1065,15 +1252,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             <div class="mode-badge">\(currentMode.tag)</div>
             <div class="pill pill-solve">⚡ SOLVING...</div>
         </div>
-        <div class="card" style="padding: 24px 16px; border-color: rgba(250, 204, 21, 0.4); background: rgba(250, 204, 21, 0.06);">
+        <div class="card" style="padding: 24px 16px; border-color: var(--gold-border); background: var(--gold-bg);">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
                 <span style="font-size: 24px;">⚡</span>
                 <div>
-                    <div style="font-size: 14px; font-weight: 700; color: #fff;">Parallel ANE Inference & Synthesis</div>
+                    <div style="font-size: 14px; font-weight: 700; color: var(--text);">Parallel ANE Inference & Synthesis</div>
                     <div style="font-size: 11.5px; color: var(--text-muted);">Whisper ANE • Apple Vision OCR • Gemini 3.8 / 3 Flash (Low) REST</div>
                 </div>
             </div>
-            <div style="font-size: 11px; color: #94a3b8; display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-size: 11px; color: var(--text-muted); display: flex; flex-direction: column; gap: 6px;">
                 <div>● Running 8-core Whisper audio transcription...</div>
                 <div>● Parsing Retina display problem statement...</div>
                 <div>● Streaming tokens via direct HTTPS SSE stream...</div>
@@ -1095,7 +1282,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         </div>
         <div class="card" style="margin-bottom: 12px;">
             <div class="card-label label-speech"><span>LIVE STREAMING SOLUTION</span></div>
-            <div id="stream-content" style="font-family: 'SF Mono', Menlo, monospace; font-size: 12.5px; line-height: 1.5; color: #f8fafc; white-space: pre-wrap; word-break: break-word;"></div>
+            <div id="stream-content" style="font-family: 'SF Mono', Menlo, monospace; font-size: 12.5px; line-height: 1.5; color: var(--code-text); white-space: pre-wrap; word-break: break-word;"></div>
         </div>
         <script>
             function appendText(chunk) {
@@ -1125,10 +1312,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         let speechHtml = speech.isEmpty ? "" : """
         <div class="speech-card">
             <div class="card-label label-speech">
-                <span>🗣️ WHAT TO SAY ALOUD (CASUAL THINKING CUES)</span>
-                <span style="font-size: 9.5px; color: var(--accent); font-weight: 600;">NATURAL • GLANCE & SPEAK</span>
+                <span>🗣️ WHAT TO SAY ALOUD RIGHT NOW</span>
+                <span style="font-size: 9.5px; color: var(--accent); font-weight: 600;">READ OUT LOUD</span>
             </div>
-            \(formatSpeechCuesHTML(speech))
+            <div class="speech-text">\(formatSpeechParagraphHTML(speech))</div>
         </div>
         """
 
@@ -1143,11 +1330,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         """
 
         let complexityHtml = complexity.isEmpty ? "" : """
-        <div class="card" style="padding: 10px 14px; background: rgba(52, 211, 153, 0.08); border-color: rgba(52, 211, 153, 0.3);">
+        <div class="card" style="padding: 10px 14px; background: var(--green-bg); border-color: var(--green-border);">
             <div class="card-label label-complexity" style="margin-bottom: 4px;">
                 <span>⏱️ TIME & SPACE COMPLEXITY</span>
             </div>
-            <div style="font-size: 12.5px; color: #e2e8f0;">\(escapeHtml(complexity))</div>
+            <div style="font-size: 12.5px; color: var(--text);">\(escapeHtml(complexity))</div>
         </div>
         """
 
@@ -1163,7 +1350,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         \(complexityHtml)
         <div class="footer">
             <span>\(modelName)</span>
-            <span><span class="hk">Opt+Down/Up</span> Scroll • <span class="hk">Opt+S</span> Next • <span class="hk">Opt+R</span> Reset</span>
+            <span><span class="hk">Opt+Down/Up</span> Scroll • <span class="hk">Ctrl+Opt+Arrows</span> Move • <span class="hk">Opt+[/]</span> Resize</span>
         </div>
         <script>
             function copyCode() {
@@ -1186,11 +1373,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         <div class="header">
             <div class="brand">CORTEXGLASS HUD</div>
             <div class="mode-badge">\(currentMode.tag)</div>
-            <div class="pill" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">❌ ERROR</div>
+            <div class="pill" style="background: var(--rose-bg); color: var(--rose); border: 1px solid var(--rose-border);">❌ ERROR</div>
         </div>
-        <div class="card" style="border-color: rgba(239, 68, 68, 0.4); padding: 18px;">
-            <div style="font-size: 13.5px; font-weight: 700; color: #f87171; margin-bottom: 8px;">Inference Failed</div>
-            <div style="font-size: 12px; color: #cbd5e1; font-family: 'SF Mono', monospace; line-height: 1.5;">\(escapeHtml(errorMsg))</div>
+        <div class="card" style="border-color: var(--rose-border); padding: 18px;">
+            <div style="font-size: 13.5px; font-weight: 700; color: var(--rose); margin-bottom: 8px;">Inference Failed</div>
+            <div style="font-size: 12px; color: var(--text); font-family: 'SF Mono', monospace; line-height: 1.5;">\(escapeHtml(errorMsg))</div>
         </div>
         <div class="footer">
             <span>Check ~/.config/overlay/gemini_api_key.txt</span>
@@ -1255,52 +1442,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                   .replacingOccurrences(of: "'", with: "&#39;")
     }
 
-    func formatSpeechCuesHTML(_ rawSpeech: String) -> String {
-        var rawLines = rawSpeech.components(separatedBy: "\n")
+    func formatSpeechParagraphHTML(_ rawSpeech: String) -> String {
+        var text = rawSpeech.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("\"") && text.hasSuffix("\"") && text.count > 2 {
+            text = String(text.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // Clean up LaTeX math wrappers like $O(n)$ or $O(n^2)$ -> O(n) or O(n²) for spoken clarity
+        text = text.replacingOccurrences(of: "$O(", with: "O(")
+                   .replacingOccurrences(of: ")$", with: ")")
+                   .replacingOccurrences(of: "$", with: "")
+
+        let paragraphs = text.components(separatedBy: "\n\n")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
-        if rawLines.count == 1 && rawSpeech.contains(". ") {
-            rawLines = rawSpeech.components(separatedBy: ". ")
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .map { $0.hasSuffix(".") ? $0 : $0 + "." }
+        if paragraphs.count > 1 {
+            return paragraphs.map { "<p style=\"margin: 0 0 10px 0; line-height: 1.65;\">\(escapeHtml($0))</p>" }.joined()
+        } else {
+            return "<p style=\"margin: 0; line-height: 1.65;\">\(escapeHtml(text))</p>"
         }
-
-        var cueItems: [String] = []
-        for line in rawLines {
-            var clean = line
-            if clean.hasPrefix("- ") || clean.hasPrefix("* ") || clean.hasPrefix("• ") {
-                clean = String(clean.dropFirst(2)).trimmingCharacters(in: .whitespaces)
-            } else if let dotIndex = clean.firstIndex(of: ".") {
-                let prefix = clean[..<dotIndex]
-                if prefix.allSatisfy({ $0.isNumber }) && !prefix.isEmpty {
-                    clean = String(clean[clean.index(after: dotIndex)...]).trimmingCharacters(in: .whitespaces)
-                }
-            }
-            if clean.hasPrefix("**") && clean.hasSuffix("**") && clean.count > 4 {
-                clean = String(clean.dropFirst(2).dropLast(2))
-            }
-            if !clean.isEmpty {
-                cueItems.append(clean)
-            }
-        }
-
-        if cueItems.isEmpty {
-            return "<div class=\"speech-text\">\(escapeHtml(rawSpeech))</div>"
-        }
-
-        var html = "<div class=\"speech-cues\">"
-        for (idx, cue) in cueItems.enumerated() {
-            html += """
-            <div class=\"cue-item\">
-                <span class=\"cue-num\">\(idx + 1)</span>
-                <span class=\"cue-text\">\(escapeHtml(cue))</span>
-            </div>
-            """
-        }
-        html += "</div>"
-        return html
     }
 
     // ========================================================================
@@ -1325,14 +1485,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         // Option + 2           : Switch to System Design
         // Option + 3           : Switch to Leadership & Behavioral
         // Option + 4           : Switch to Past Project Retrospective
+        // Core Hotkeys:
+        // Option + S           : Start Session Recording
+        // Option + Return      : Stop Session & Solve
+        // Option + 1           : Switch to Coding / DSA [DEFAULT]
+        // Option + 2           : Switch to System Design
+        // Option + 3           : Switch to Leadership & Behavioral
+        // Option + 4           : Switch to Past Project Retrospective
         // Option + O           : Clean Quit Application
         // Option + Z           : Stealth HUD Visibility Toggle
         // Option + I           : Interactive Mouse Toggle
         // Option + R           : Reset Session Buffers & Clear HUD
         // Option + Down Arrow  : Remote Scroll Down (+320px) [Zero Focus Loss]
         // Option + Up Arrow    : Remote Scroll Up (-320px) [Zero Focus Loss]
-        // Option + [           : Scale HUD Down (0.90x)
-        // Option + ]           : Scale HUD Up (1.10x)
+        // Option + [ or -      : Scale HUD Down (0.90x) [Zero Focus Loss]
+        // Option + ] or =      : Scale HUD Up (1.10x) [Zero Focus Loss]
         let binds: [(UInt32, Int)] = [
             (1, kVK_ANSI_S),
             (2, kVK_Return),
@@ -1347,11 +1514,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             (11, kVK_DownArrow),
             (12, kVK_UpArrow),
             (13, kVK_ANSI_LeftBracket),
-            (14, kVK_ANSI_RightBracket)
+            (14, kVK_ANSI_RightBracket),
+            (15, kVK_ANSI_Minus),
+            (16, kVK_ANSI_Equal)
         ]
         for (id, code) in binds {
             var ref: EventHotKeyRef?
             RegisterEventHotKey(UInt32(code), opt, EventHotKeyID(signature: OSType(0x5350), id: id), GetApplicationEventTarget(), 0, &ref)
+        }
+
+        // Control + Option Chords (Zero Focus Theft Window Repositioning & Snapping)
+        let optCtrl = UInt32(optionKey | controlKey)
+        let ctrlBinds: [(UInt32, Int)] = [
+            (21, kVK_LeftArrow),         // Ctrl + Opt + Left  : Move Left (-60px)
+            (22, kVK_RightArrow),        // Ctrl + Opt + Right : Move Right (+60px)
+            (23, kVK_UpArrow),           // Ctrl + Opt + Up    : Move Up (+60px)
+            (24, kVK_DownArrow),         // Ctrl + Opt + Down  : Move Down (-60px)
+            (25, kVK_ANSI_1),            // Ctrl + Opt + 1     : Snap Top-Left
+            (26, kVK_ANSI_2),            // Ctrl + Opt + 2     : Snap Top-Right (Default)
+            (27, kVK_ANSI_3),            // Ctrl + Opt + 3     : Snap Bottom-Left
+            (28, kVK_ANSI_4),            // Ctrl + Opt + 4     : Snap Bottom-Right
+            (29, kVK_ANSI_LeftBracket),  // Ctrl + Opt + [     : Shrink (0.90x)
+            (30, kVK_ANSI_RightBracket), // Ctrl + Opt + ]     : Expand (1.10x)
+            (31, kVK_ANSI_Minus),         // Ctrl + Opt + -     : Shrink (0.90x)
+            (32, kVK_ANSI_Equal)          // Ctrl + Opt + =     : Expand (1.10x)
+        ]
+        for (id, code) in ctrlBinds {
+            var ref: EventHotKeyRef?
+            RegisterEventHotKey(UInt32(code), optCtrl, EventHotKeyID(signature: OSType(0x5350), id: id), GetApplicationEventTarget(), 0, &ref)
         }
 
         // Active key suppression matrix to swallow all remaining Option + key chords.
@@ -1364,7 +1554,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             kVK_ANSI_Y,
             kVK_ANSI_0, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7,
             kVK_ANSI_8, kVK_ANSI_9,
-            kVK_ANSI_Equal, kVK_ANSI_Minus,
             kVK_ANSI_Semicolon, kVK_ANSI_Slash,
             kVK_ANSI_Quote, kVK_ANSI_Comma, kVK_ANSI_Period,
             kVK_ANSI_Grave, kVK_ANSI_Backslash
@@ -1389,18 +1578,59 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         case 10: resetRound()
         case 11: webView.evaluateJavaScript("window.scrollBy({top: 320, behavior: 'smooth'});", completionHandler: nil)
         case 12: webView.evaluateJavaScript("window.scrollBy({top: -320, behavior: 'smooth'});", completionHandler: nil)
-        case 13: scaleWindow(0.90)
-        case 14: scaleWindow(1.10)
+        case 13, 15, 29, 31: scaleWindow(0.90)
+        case 14, 16, 30, 32: scaleWindow(1.10)
+        case 21: moveWindow(dx: -60, dy: 0)
+        case 22: moveWindow(dx: 60, dy: 0)
+        case 23: moveWindow(dx: 0, dy: 60)
+        case 24: moveWindow(dx: 0, dy: -60)
+        case 25: snapToCorner(.topLeft)
+        case 26: snapToCorner(.topRight)
+        case 27: snapToCorner(.bottomLeft)
+        case 28: snapToCorner(.bottomRight)
         default: break
         }
+    }
+
+    // Zero-Focus Window Repositioning & Resizing Engine
+    func moveWindow(dx: CGFloat, dy: CGFloat) {
+        guard let s = NSScreen.main?.visibleFrame else { return }
+        var f = panel.frame
+        let newX = max(s.minX, min(s.maxX - f.width, f.origin.x + dx))
+        let newY = max(s.minY, min(s.maxY - f.height, f.origin.y + dy))
+        f.origin = CGPoint(x: newX, y: newY)
+        panel.setFrame(f, display: true, animate: false)
+    }
+
+    enum ScreenCorner {
+        case topLeft, topRight, bottomLeft, bottomRight
+    }
+
+    func snapToCorner(_ corner: ScreenCorner) {
+        guard let s = NSScreen.main?.visibleFrame else { return }
+        var f = panel.frame
+        let margin: CGFloat = 20
+        switch corner {
+        case .topLeft:
+            f.origin = CGPoint(x: s.minX + margin, y: s.maxY - f.height - margin)
+        case .topRight:
+            f.origin = CGPoint(x: s.maxX - f.width - margin, y: s.maxY - f.height - margin)
+        case .bottomLeft:
+            f.origin = CGPoint(x: s.minX + margin, y: s.minY + margin)
+        case .bottomRight:
+            f.origin = CGPoint(x: s.maxX - f.width - margin, y: s.minY + margin)
+        }
+        panel.setFrame(f, display: true, animate: false)
     }
 
     func scaleWindow(_ d: CGFloat) {
         guard let s = NSScreen.main?.visibleFrame else { return }
         var f = panel.frame
-        let nw = max(340, min(s.width * 0.75, f.width * d))
+        let nw = max(340, min(s.width * 0.80, f.width * d))
         let nh = max(380, min(s.height * 0.95, f.height * d))
-        f.origin.y = max(s.minY, f.maxY - nh)
+        let newX = max(s.minX, min(s.maxX - nw, f.origin.x))
+        let newY = max(s.minY, min(s.maxY - nh, f.maxY - nh))
+        f.origin = CGPoint(x: newX, y: newY)
         f.size = CGSize(width: nw, height: nh)
         panel.setFrame(f, display: true, animate: false)
     }

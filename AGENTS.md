@@ -79,15 +79,17 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
 | **Option + Return** | Stop Session & Solve | Halts accumulation, runs Whisper ANE + Vision OCR in parallel, streams Gemini REST response into HUD. Border turns Neon Gold. |
 | **Option + Down** | Remote Scroll Down (+320px) | Smoothly scrolls HUD downward without stealing window focus from CoderPad. |
 | **Option + Up** | Remote Scroll Up (-320px) | Smoothly scrolls HUD upward without stealing window focus from CoderPad. |
-| **Option + [** | Shrink HUD (0.90x) | In-place scale down anchored to top/right margins. |
-| **Option + ]** | Expand HUD (1.10x) | In-place scale up anchored to top/right margins. |
-| **Option + 1** | Switch to Coding / DSA | Locks mode to **Data Structures & Algorithms** [Strict Default]. Electric Cyan border. |
-| **Option + 2** | Switch to System Design | Locks mode to **System Design (ASCII & Scaled Architecture)**. Neon Violet border. |
-| **Option + 3** | Switch to Behavioral | Locks mode to **Leadership & Behavioral (STAR Method)**. Rose Red border. |
-| **Option + 4** | Switch to Past Project | Locks mode to **Past Project Retrospective & System Architecture**. Amber Gold border. |
+| **Ctrl + Option + Arrows** | Move HUD (Zero Focus Theft) | Nudges HUD Left/Right/Up/Down by 60px smoothly within visible screen bounds without stealing browser/CoderPad cursor focus. |
+| **Ctrl + Option + 1..4** | Snap HUD to Corners | Instantly snaps HUD to Top-Left (`1`), Top-Right (`2`, Default), Bottom-Left (`3`), or Bottom-Right (`4`) with Zero Focus Theft. |
+| **Option + [** or **Option + -** | Shrink HUD (0.90x) | In-place scale down anchored within visible screen bounds with Zero Focus Theft. |
+| **Option + ]** or **Option + =** | Expand HUD (1.10x) | In-place scale up anchored within visible screen bounds with Zero Focus Theft. |
+| **Option + 1** | Switch to Coding / DSA | Locks mode to **Data Structures & Algorithms** [Strict Default]. Daylight Sky Blue border. |
+| **Option + 2** | Switch to System Design | Locks mode to **System Design (ASCII & Scaled Architecture)**. Daylight Violet border. |
+| **Option + 3** | Switch to Behavioral | Locks mode to **Leadership & Behavioral (STAR Method)**. Daylight Rose border. |
+| **Option + 4** | Switch to Past Project | Locks mode to **Past Project Retrospective & System Architecture**. Daylight Amber border. |
 | **Option + O** | Clean Quit Application | Cleanly stops capture, unlocks `/tmp/com.swikar.spatialhud.lock`, and terminates (`exit(0)`). |
 | **Option + Z** | Stealth HUD Visibility Toggle | Instantly toggles the headless HUD between fully visible and 100% alpha-transparent. |
-| **Option + I** | Interactive Click-Through Toggle | Toggles `ignoresMouseEvents`, allowing the user to click, scroll, or select text within the HUD. |
+| **Option + I** | Interactive Click-Through Toggle | Toggles `ignoresMouseEvents` for optional mouse positioning/dragging before an interview begins. |
 | **Option + R** | Reset Session & Buffers | Clears problem state, resets solve count to 0, flushes audio/OCR caches, restores HUD to READY state. |
 
 ### SpatialVision Diagnostic HUD & Autonomous Typer Hotkeys
@@ -147,10 +149,10 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
 * **Decision**: Maintain a continuous 5-second rolling circular buffer (`preRollBuffer`, 80,000 floats at 16kHz) during idle listening. When recording is triggered (`Option + S`), prepend `preRollBuffer` into `audioSamples` to capture opening question words, and invalidate any running Gemini DOM generation (`button[aria-label*="Stop"]`). Track session round iterations (`solveCount`); when `solveCount > 0`, frame synthesis specifically for multi-turn follow-up amendments (patching code, answering trade-offs without rewriting unchanged solutions).
 * **Engineering Rationale**: Interviewers often begin speaking several seconds before a candidate engages recording; prepending 5 seconds of pre-roll ensures zero truncated opening words. Furthermore, technical rounds frequently involve iterative amendments rather than net-new problems; explicit multi-turn follow-up prompting prevents the LLM from redundantly rewriting full boilerplate code, producing concise patches instead.
 
-### ADR-008: Unified Full-Desktop OCR & Zero-Focus Remote HUD Navigation
+### ADR-008: Unified Full-Desktop OCR & Zero-Focus Remote HUD Navigation & Repositioning
 * **Status**: Accepted & Implemented
-* **Decision**: Eliminate split-pane coordinate bounding heuristics (`midX <= 0.52`). Ingest the complete Retina desktop display, sort all OCR text observations strictly top-to-bottom by bounding box coordinate (`$0.box.midY > $1.box.midY`), and deduplicate via continuous scroll-stitching. Implement zero-focus remote window controls: in-place scaling (`Option + [` / `]`), in-place opacity adjustment (`Option + -` / `=`), and non-activating remote JavaScript scrolling (`Option + Down` / `Up`). Retain manual mouse interactivity (`Option + I`) as an explicit opt-in state, preserving `ignoresMouseEvents = true` by default.
-* **Engineering Rationale**: Arbitrary horizontal screen-splitting breaks when candidates resize browser splitters, use non-50/50 layouts, or open bottom/side test console drawers. Full-desktop top-to-bottom OCR provides complete problem and editor telemetry regardless of layout. Browser proctoring engines (HackerRank, CoderPad) listen for `window.onblur` to flag candidates; non-activating remote JS scrolling and AppKit `setFrame` (without `makeKeyAndOrderFront`) ensure zero focus theft while maintaining complete candidate control over HUD visibility and diagnostics.
+* **Decision**: Eliminate split-pane coordinate bounding heuristics (`midX <= 0.52`). Ingest the complete Retina desktop display, sort all OCR text observations strictly top-to-bottom by bounding box coordinate (`$0.box.midY > $1.box.midY`), and deduplicate via continuous scroll-stitching. Implement zero-focus remote window controls: in-place scaling (`Option + [` / `]` and `Option + -` / `=`), zero-focus window nudging (`Ctrl + Option + Left/Right/Up/Down`), instant corner snapping (`Ctrl + Option + 1..4`), and non-activating remote JavaScript scrolling (`Option + Down` / `Up`). Retain manual mouse interactivity (`Option + I`) as an explicit opt-in state for pre-interview setup, preserving `ignoresMouseEvents = true` by default during live interview sessions.
+* **Engineering Rationale**: Arbitrary horizontal screen-splitting breaks when candidates resize browser splitters, use non-50/50 layouts, or open bottom/side test console drawers. Full-desktop top-to-bottom OCR provides complete problem and editor telemetry regardless of layout. Browser proctoring engines (HackerRank, CoderPad) listen for `window.onblur` to flag candidates, while collaborative Monaco/Ace editors drop the live blinking cursor when another window is clicked; non-activating remote JS scrolling, Carbon `Ctrl + Option` window translation, and AppKit `setFrame` (without `makeKeyAndOrderFront`) ensure zero focus theft while maintaining complete candidate control over HUD visibility, position, size, and diagnostics.
 
 ### ADR-009: Selective Context Injection & Ultra-Lean Coding Prompt Synthesis
 * **Status**: Accepted & Implemented
@@ -172,10 +174,20 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
 * **Decision**: Configure `SpatialHUD.swift` to prioritize `gemini-3.8-flash` with "Low" thinking budget (`thinkingBudget: 512`) by default, backed by an automatic failover cascade (`gemini-3-flash-preview` -> `gemini-2.5-flash` -> `gemini-flash-latest`) and configurable `GEMINI_THINKING_BUDGET` / `GEMINI_MODEL` environment variables. Enforce a 6.0s connection deadline and catch HTTP 429/404/503/400 errors for instant zero-stall transition.
 * **Engineering Rationale**: The user requested Gemini 3.8 Flash with Low thinking for enhanced reasoning depth. While Google's public developer API endpoint for `gemini-3.8-flash` currently exhibits rate limits/timeouts on certain tiers, Google's `gemini-3-flash-preview` and `gemini-2.5-flash` endpoints stream at sub-2.5s TTFT with Low thinking (`512` tokens) and sub-1.0s TTFT with thinking disabled (`0` tokens). The failover cascade guarantees the candidate receives state-of-the-art Gemini 3 reasoning whenever responsive, with instantaneous failover to Gemini 2.5 Flash if Google's 3.8 backend rate-limits or stalls.
 
-### ADR-013: Natural Conversational Human Thinking Cues vs. Scripted Paragraph Recitation
+### ADR-013: Cohesive Spoken Engineering Paragraphs vs. Fragmented Bullet Points & Artificial Slang
 * **Status**: Accepted & Implemented
-* **Decision**: Overhaul verbal speech synthesis in `SpatialHUD.swift` (`buildPrompt` & `renderFinalCards`). Replace dense textbook paragraphs with exactly 3 short, punchy conversational bullet points (under 15 words each, in quotes) structured as authentic human "thinking out loud": 1) Casual clarification in plain English, 2) First instinct / brute-force trade-off, and 3) Optimal algorithm & pivot to coding. In the HUD, render speech as distinct numbered interactive Cue Chips (`.cue-item`) with cyan accent borders.
-* **Engineering Rationale**: Reading full formal AI paragraphs during live CoderPad interviews sounds robotic, unnatural, and signals to interviewers that the candidate is reading from prepared notes or an external screen. Breaking thoughts into 3 concise conversational quotes allows candidates to either glance and paraphrase naturally in 3 seconds or say the exact words aloud with 100% human cadence.
+* **Decision**: Refine verbal speech synthesis in `SpatialHUD.swift` (`buildPrompt` & `renderFinalCards`). Structure the "WHAT TO SAY ALOUD RIGHT NOW" section as a cohesive, natural spoken engineering paragraph (3–4 sentences) covering: 1) Clarified problem understanding and key constraints, 2) Baseline brute-force approach and its Big-O limitation, 3) Optimal algorithmic intuition, trade-off, and target time/space complexity, and 4) Natural transition into coding. Strictly prohibit fragmented micro-bullets and ban artificial theatrical colloquialisms (e.g., "..but that feels like a cheat"). In the HUD, render the paragraph inside `.speech-card` with clean typography and stripped LaTeX math markup for effortless spoken delivery.
+* **Engineering Rationale**: Fragmented micro-bullets cut explanations off too short and artificial slang sounds theatrical and unprofessional. A cohesive, well-articulated engineering paragraph provides the substantive technical depth expected in senior CoderPad technical rounds while maintaining genuine, natural engineering thought flow.
+
+### ADR-014: Daylight Glassmorphism HUD Theme Architecture & Dynamic Token Engine
+* **Status**: Accepted & Implemented
+* **Decision**: Adopt a Daylight Light-Mode Glassmorphism palette as the default visual styling for `SpatialHUD.swift`, with dynamic fallback support for dark mode via `HUD_THEME=dark`. Configure daylight CSS design tokens:
+  - Surface & Backdrop: High-clarity frosted glass backing `rgba(255, 255, 255, 0.96)` with `backdrop-filter: blur(28px) saturate(190%)` and soft ambient drop shadows (`0 4px 16px -2px rgba(15, 23, 42, 0.05)`).
+  - Typography: High-contrast slate/navy hierarchy (`--text: #0f172a`, `--text-muted: #64748b`, `--speech-text: #0f172a`, `--code-text: #0f172a`).
+  - Code & Speech Cards: Light slate card surfaces (`--card: rgba(255, 255, 255, 0.92)`, `--speech-bg: linear-gradient(135deg, rgba(240, 249, 255, 0.95), rgba(224, 242, 254, 0.65))`, `--code-bg: #f8fafc`, `--code-border: #e2e8f0`).
+  - Dynamic AppKit Borders: Daylight Sky Blue for Coding (`#0ea5e9`), Daylight Violet for System Design (`#7c3aed`), Daylight Rose for Behavioral (`#e11d48`), and Daylight Amber for Past Project (`#d97706`). In-flight borders adapt to Vivid Coral (`#e11d48`) during recording and Rich Gold (`#d97706`) during solving.
+  - Window Chrome: AppKit window backing remains transparent (`backgroundColor = .clear`) with `hasShadow = true` for natural depth against light desktop backgrounds.
+* **Engineering Rationale**: Dark HUD overlays can create intense visual contrast and glare against light IDE themes or white web-based code editors (CoderPad, LeetCode, Google Docs). A Daylight Glassmorphism HUD matches bright workspace environments, maintains pristine contrast and readability without straining the candidate's eyes, and eliminates dark rectangular visual signatures during screen review while strictly preserving compositor-level hardware stealth (`sharingType = .none`).
 
 ---
 
@@ -185,8 +197,10 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
   `swiftc -O SpatialHUD.swift -o SpatialHUD`
 * **Compile On-Device Neural Vision Engine**:
   `swiftc -O SpatialVision.swift -o SpatialVision`
-* **Launch SpatialHUD Daemon**:
+* **Launch SpatialHUD Daemon (Default Daylight Theme)**:
   `./SpatialHUD`
+* **Launch SpatialHUD Daemon (Dark Theme Override)**:
+  `HUD_THEME=dark ./SpatialHUD`
 * **Launch SpatialVision Daemon**:
   `./SpatialVision`
 
