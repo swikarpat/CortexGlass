@@ -90,7 +90,7 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
 | **Option + 4** | Switch to Past Project | Locks mode to **Past Project Retrospective & System Architecture**. Daylight Amber border. |
 | **Option + O** | Clean Quit Application | Cleanly stops capture, unlocks `/tmp/com.swikar.spatialhud.lock`, and terminates (`exit(0)`). |
 | **Option + Z** | Stealth HUD Visibility Toggle | Instantly toggles the headless HUD between fully visible and 100% alpha-transparent. |
-| **Option + I** | Interactive Click-Through Toggle | Toggles `ignoresMouseEvents` for optional mouse positioning/dragging before an interview begins. |
+| **Option + I** | Interactive Click-Through Toggle | Toggles between default mouse control (drag/resize/scroll with Zero Focus Theft) and locked click-through pass-through mode. |
 | **Option + R** | Reset Session & Buffers | Clears problem state, resets solve count to 0, flushes audio/OCR caches, restores HUD to READY state. |
 
 ### SpatialVision Diagnostic HUD & Autonomous Typer Hotkeys
@@ -187,8 +187,10 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
   - Typography: High-contrast slate/navy hierarchy (`--text: #0f172a`, `--text-muted: #64748b`, `--speech-text: #0f172a`, `--code-text: #0f172a`).
   - Code & Speech Cards: Light slate card surfaces (`--card: rgba(255, 255, 255, 0.92)`, `--speech-bg: linear-gradient(135deg, rgba(240, 249, 255, 0.95), rgba(224, 242, 254, 0.65))`, `--code-bg: #f8fafc`, `--code-border: #e2e8f0`).
   - Dynamic AppKit Borders: Daylight Sky Blue for Coding (`#0ea5e9`), Daylight Violet for System Design (`#7c3aed`), Daylight Rose for Behavioral (`#e11d48`), and Daylight Amber for Past Project (`#d97706`). In-flight borders adapt to Vivid Coral (`#e11d48`) during recording and Rich Gold (`#d97706`) during solving.
-  - Window Chrome: AppKit window backing remains transparent (`backgroundColor = .clear`) with `hasShadow = true` for natural depth against light desktop backgrounds.
-* **Engineering Rationale**: Dark HUD overlays can create intense visual contrast and glare against light IDE themes or white web-based code editors (CoderPad, LeetCode, Google Docs). A Daylight Glassmorphism HUD matches bright workspace environments, maintains pristine contrast and readability without straining the candidate's eyes, and eliminates dark rectangular visual signatures during screen review while strictly preserving compositor-level hardware stealth (`sharingType = .none`).
+### ADR-015: Zero-Focus Mouse Interactivity & Non-Activating Hardware Dragging Architecture
+* **Status**: Accepted & Implemented
+* **Decision**: Eliminate `NSApp.activate(ignoringOtherApps: true)` and `panel.makeKeyAndOrderFront(nil)`. Configure `SpatialPanel` to permanently return `canBecomeKey = false` and `canBecomeMain = false` under all circumstances while maintaining `styleMask = [.nonactivatingPanel, .resizable, .fullSizeContentView]`. When mouse interactivity is engaged (`Option + I`), simply toggle `panel.ignoresMouseEvents = false` and update border styling. In the embedded WebKit layer, attach `-webkit-app-region: drag` to `.header` and `.drag-handle`, while assigning `-webkit-app-region: no-drag` to `.pill`, `.copy-btn`, and buttons.
+* **Engineering Rationale**: In standard macOS window handling, clicking an external overlay window causes macOS to transfer key window status and active application focus, triggering `window.onblur`, `document.hasFocus() == false`, and collaborative cursor drops in browser editors like CoderPad and HackerRank. By enforcing permanent non-activating status (`canBecomeKey = false`) at the Cocoa Quartz layer, mouse events (window dragging, edge resizing, button clicking, trackpad scrolling) are consumed exclusively by the HUD's hardware surface without generating `NSWindowDidResignKeyNotification` or `NSApplicationDidResignActiveNotification` for the frontmost browser. The candidate can freely move and resize the HUD using the mouse while the CoderPad Monaco/Ace editor retains 100% continuous DOM focus, zero blur triggers, and an uninterrupted blinking text cursor.
 
 ---
 

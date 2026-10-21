@@ -17,7 +17,7 @@ if lock == -1 || flock(lock, LOCK_EX | LOCK_NB) != 0 { exit(0) }
 // 2. Hardware-Isolated Spatial HUD Panel (Compositor-Level Window Virtualization)
 // ============================================================================
 class SpatialPanel: NSPanel {
-    var isInteractive = false
+    var isInteractive = true
 
     init(rect: NSRect) {
         super.init(
@@ -33,7 +33,7 @@ class SpatialPanel: NSPanel {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = true
-        ignoresMouseEvents = true // Non-occluding click-through pass-through by default
+        ignoresMouseEvents = false // Interactive mouse control ON by default (Zero CoderPad Focus Loss)
         isMovableByWindowBackground = true
 
         contentView?.wantsLayer = true
@@ -42,8 +42,9 @@ class SpatialPanel: NSPanel {
         contentView?.layer?.borderWidth = 2.0
     }
 
-    override var canBecomeKey: Bool { isInteractive }
-    override var canBecomeMain: Bool { isInteractive }
+    // Guarantee Zero Focus Theft: Never become Key or Main window so browser/CoderPad NEVER loses focus or triggers blur
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
 }
 
 // ============================================================================
@@ -298,18 +299,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         startAudioCapture()
         startScreenWatcher()
         print("🚀 CortexGlass Online: Direct Gemini REST Engine ACTIVE. Mode: \(currentMode.label)")
-        print("⌨️  Hotkeys: Opt+S (Record), Opt+Return (Stop & Solve), Opt+Down/Up (Scroll), Opt+Left/Right (Move), Opt+[/] (Resize), Opt+R (Reset), Opt+O (Quit)")
+        print("🖱️  Mouse Control: Drag top header to move, drag edges to resize, trackpad to scroll (Zero CoderPad Focus Loss)")
+        print("⌨️  Hotkeys: Opt+S (Record), Opt+Return (Stop & Solve), Opt+Down/Up (Scroll), Opt+Left/Right (Move), Opt+[/] (Resize), Opt+I (Lock), Opt+O (Quit)")
     }
 
     // Dynamic Border Visual Feedback:
     func updateBorder() {
         let isDaylight = ProcessInfo.processInfo.environment["HUD_THEME"] != "dark"
-        if panel.isInteractive {
-            panel.contentView?.layer?.borderColor = isDaylight ?
-                NSColor(red: 0.10, green: 0.45, blue: 0.95, alpha: 1.0).cgColor :
-                NSColor.white.cgColor
-            panel.contentView?.layer?.borderWidth = 2.5
-        } else if isSessionRecording {
+        if isSessionRecording {
             panel.contentView?.layer?.borderColor = isDaylight ?
                 NSColor(red: 0.88, green: 0.20, blue: 0.15, alpha: 1.0).cgColor :
                 NSColor(red: 0.95, green: 0.35, blue: 0.15, alpha: 1.0).cgColor // ACTIVE RECORDING
@@ -319,23 +316,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 NSColor(red: 0.85, green: 0.60, blue: 0.05, alpha: 1.0).cgColor :
                 NSColor(red: 1.0, green: 0.78, blue: 0.15, alpha: 1.0).cgColor // SOLVING
             panel.contentView?.layer?.borderWidth = 2.5
+        } else if !panel.isInteractive {
+            // Locked click-through mode: subtle semi-transparent border
+            panel.contentView?.layer?.borderColor = isDaylight ?
+                NSColor(red: 0.60, green: 0.65, blue: 0.75, alpha: 0.45).cgColor :
+                NSColor(red: 0.40, green: 0.45, blue: 0.55, alpha: 0.45).cgColor
+            panel.contentView?.layer?.borderWidth = 1.5
         } else {
+            // Default interactive mouse control: Mode color (Daylight Sky Blue, etc.)
             panel.contentView?.layer?.borderColor = currentMode.color
             panel.contentView?.layer?.borderWidth = 2.0
         }
     }
 
-    // Option + I : Toggle mouse interactivity, dragging, and keyboard focus
+    // Option + I : Toggle mouse interactivity, dragging, and resizing (Zero CoderPad Focus Loss)
     func toggleInteractive() {
         panel.isInteractive.toggle()
         panel.ignoresMouseEvents = !panel.isInteractive
-        if panel.isInteractive {
-            NSApp.activate(ignoringOtherApps: true)
-            panel.makeKeyAndOrderFront(nil)
-        } else {
-            panel.resignKey()
-        }
         updateBorder()
+        print(panel.isInteractive ? "🖱️ Mouse Control ACTIVE (Zero Focus Theft: CoderPad remains 100% focused)" : "🔒 Locked Stealth Click-Through Active")
     }
 
     // Option + R : Reset session buffers and clear HUD
@@ -889,6 +888,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 padding-bottom: 12px;
                 border-bottom: 1px solid var(--header-border);
                 margin-bottom: 14px;
+                -webkit-app-region: drag;
+                cursor: grab;
+                user-select: none;
+                -webkit-user-select: none;
+            }
+            .header:active {
+                cursor: grabbing;
             }
             .brand {
                 font-weight: 800;
@@ -896,6 +902,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 letter-spacing: 1.2px;
                 color: var(--accent);
                 text-transform: uppercase;
+                -webkit-app-region: drag;
             }
             .mode-badge {
                 font-size: 10px;
@@ -906,6 +913,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 border: 1px solid rgba(14, 165, 233, 0.35);
                 color: var(--accent);
                 letter-spacing: 0.5px;
+                -webkit-app-region: drag;
             }
             .pill {
                 font-size: 10px;
@@ -915,6 +923,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 display: inline-flex;
                 align-items: center;
                 gap: 4px;
+                -webkit-app-region: no-drag;
             }
             .pill-ready { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
             .pill-rec { background: var(--rose-bg); color: var(--rose); border: 1px solid var(--rose-border); animation: pulse 1.2s infinite; }
@@ -978,6 +987,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 cursor: pointer;
                 font-weight: 600;
                 transition: all 0.15s ease;
+                -webkit-app-region: no-drag;
             }
             .copy-btn:hover { color: var(--btn-hover-text); background: var(--btn-hover-bg); }
             .footer {
@@ -1058,6 +1068,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 padding-bottom: 12px;
                 border-bottom: 1px solid var(--header-border);
                 margin-bottom: 14px;
+                -webkit-app-region: drag;
+                cursor: grab;
+                user-select: none;
+                -webkit-user-select: none;
+            }
+            .header:active {
+                cursor: grabbing;
             }
             .brand {
                 font-weight: 800;
@@ -1065,6 +1082,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 letter-spacing: 1.2px;
                 color: var(--accent);
                 text-transform: uppercase;
+                -webkit-app-region: drag;
             }
             .mode-badge {
                 font-size: 10px;
@@ -1075,6 +1093,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 border: 1px solid rgba(56, 189, 248, 0.35);
                 color: var(--accent);
                 letter-spacing: 0.5px;
+                -webkit-app-region: drag;
             }
             .pill {
                 font-size: 10px;
@@ -1084,6 +1103,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 display: inline-flex;
                 align-items: center;
                 gap: 4px;
+                -webkit-app-region: no-drag;
             }
             .pill-ready { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
             .pill-rec { background: var(--rose-bg); color: var(--rose); border: 1px solid var(--rose-border); animation: pulse 1.2s infinite; }
@@ -1144,6 +1164,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 font-size: 9.5px;
                 cursor: pointer;
                 font-weight: 600;
+                -webkit-app-region: no-drag;
             }
             .copy-btn:hover { color: var(--btn-hover-text); background: var(--btn-hover-bg); }
             .footer {
