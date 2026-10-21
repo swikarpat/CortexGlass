@@ -263,7 +263,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         case coding, systemDesign, behavioral, projectDeepDive
 
         var color: CGColor {
-            let isDaylight = ProcessInfo.processInfo.environment["HUD_THEME"] != "dark"
+            let isDaylight = AppDelegate.isDaylightTheme()
             if isDaylight {
                 switch self {
                 case .coding:          return NSColor(red: 0.05, green: 0.55, blue: 0.90, alpha: 0.90).cgColor // Daylight Sky Blue
@@ -350,17 +350,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         renderIdleHUD()
         panel.orderFront(nil)
 
+        // Automatically sync with MacBook Pro system theme (Daylight vs Night/Dark) and sunrise/sunset schedules
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            print("🌓 MacBook Pro Appearance Changed -> Auto-adjusting HUD theme...")
+            self.updateBorder()
+            if !self.isSolving && !self.isSessionRecording {
+                self.renderIdleHUD()
+            }
+        }
+
         // Hands-Free Sentinel Boot: Auto-start audio tap (Mode strictly locked to Coding / DSA default)
         startAudioCapture()
         startScreenWatcher()
+        let themeName = AppDelegate.isDaylightTheme() ? "Daylight (Light Glass)" : "Night (Dark Glass)"
         print("🚀 CortexGlass Online: Direct Gemini REST Engine ACTIVE. Mode: \(currentMode.label)")
+        print("🌓 Theme Engine: Synced with MacBook Pro System Appearance & Schedule -> \(themeName)")
         print("🖱️  Mouse Control: Drag top header to move, drag edges to resize, trackpad to scroll (Zero CoderPad Focus Loss)")
         print("⌨️  Hotkeys: Opt+S (Record), Opt+Return (Stop & Solve), Opt+Down/Up (Scroll), Opt+Left/Right (Move), Opt+[/] (Resize), Opt+I (Lock), Opt+O (Quit)")
     }
 
     // Dynamic Border Visual Feedback:
     func updateBorder() {
-        let isDaylight = ProcessInfo.processInfo.environment["HUD_THEME"] != "dark"
+        let isDaylight = AppDelegate.isDaylightTheme()
         if isSessionRecording {
             panel.contentView?.layer?.borderColor = isDaylight ?
                 NSColor(red: 0.88, green: 0.20, blue: 0.15, alpha: 1.0).cgColor :
@@ -908,10 +924,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     }
 
     // ========================================================================
-    // 9. Glassmorphism HUD HTML Renderer
+    // 9. Auto-Adaptive System Theme Engine (Synced with MacBook Pro Appearance & Timing)
     // ========================================================================
+    static func isDaylightTheme() -> Bool {
+        // 1. Explicit user environment override (e.g., HUD_THEME=daylight or HUD_THEME=dark)
+        if let env = ProcessInfo.processInfo.environment["HUD_THEME"]?.lowercased(), !env.isEmpty {
+            if env == "daylight" || env == "light" { return true }
+            if env == "dark" || env == "night" { return false }
+        }
+
+        // 2. macOS System Appearance (Matches System Settings -> Appearance: Light / Dark / Auto)
+        // When Auto is enabled, macOS automatically flips AppleInterfaceStyle between Light (nil) and Dark at sunrise/sunset.
+        if let style = UserDefaults.standard.string(forKey: "AppleInterfaceStyle"), style.lowercased().contains("dark") {
+            return false // MacBook Pro is in Dark / Night mode
+        }
+        if NSApplication.shared.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
+            return false // macOS effective appearance resolved to DarkAqua
+        }
+
+        // 3. Timing fallback: Daylight between 7:00 AM and 7:00 PM (19:00) local MacBook time
+        let hour = Calendar.current.component(.hour, from: Date())
+        if hour < 7 || hour >= 19 {
+            return false // Night mode
+        }
+
+        return true // Daylight mode
+    }
+
     func isDaylightTheme() -> Bool {
-        return ProcessInfo.processInfo.environment["HUD_THEME"] != "dark"
+        return AppDelegate.isDaylightTheme()
     }
 
     func baseCSS() -> String {
@@ -1330,6 +1371,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         let thinkingBudget = Int(ProcessInfo.processInfo.environment["GEMINI_THINKING_BUDGET"] ?? "512") ?? 512
         let thinkingLabel = thinkingBudget > 0 ? "Low Thinking" : "Sub-second"
         let modelBadge = "\(preferredModel) • \(thinkingLabel)"
+        let themeBadge = isDaylightTheme() ? "☀️ Daylight" : "🌙 Night"
 
         let html = """
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
@@ -1348,6 +1390,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             <div style="display: flex; justify-content: center; gap: 8px; font-size: 11px;">
                 <span class="pill pill-latency">⚡ ~1.8s TTFT</span>
                 <span class="pill pill-latency">\(modelBadge)</span>
+                <span class="pill pill-latency">\(themeBadge)</span>
             </div>
         </div>
         <div class="card">
