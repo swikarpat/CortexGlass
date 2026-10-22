@@ -446,6 +446,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     // ========================================================================
     func startAudioCapture() {
         guard audioStream == nil else { return }
+        guard CGPreflightScreenCaptureAccess() else {
+            print("⚠️ Screen & System Audio Access not granted in System Settings. Enable in System Settings -> Privacy & Security -> Screen & System Audio Recording.")
+            return
+        }
         Task {
             do {
                 let c = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -571,11 +575,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     // 6. High-Speed Silent Screen Capture (Apple Vision OCR with Zero Self-Capture)
     // ========================================================================
     private static let hudScrubKeywords = [
-        "cortexglass", "what to say aloud", "exact python 3", "time & space complexity",
+        "cortexglass", "thought out loud", "what to say aloud", "python implementation", "exact python 3", "time & space complexity",
         "quick operational guide", "direct gemini rest", "spatialhud", "opt + s", "opt + return"
     ]
 
     func captureScreenText() async -> String {
+        guard CGPreflightScreenCaptureAccess() else {
+            print("⚠️ Screen recording permission not yet granted in System Settings.")
+            return ""
+        }
         do {
             // Guarantee 100% Zero HUD Self-Capture:
             // Temporarily set HUD alphaValue = 0 so macOS WindowServer renders ONLY the background/CoderPad
@@ -647,25 +655,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 CURRENT CODE ON SCREEN:
                 \(screenContext)
 
-                CRITICAL INSTRUCTION FOR "WHAT TO SAY ALOUD RIGHT NOW":
-                Provide a structured, natural verbal script directly discussing the follow-up approach with the interviewer.
-                Structure it in 2 clear parts:
-
-                **Follow-up Approach & Trade-offs:**
-                - Acknowledge the interviewer's new constraint, scale, or edge-case query directly.
-                - Explain the optimal algorithmic adaptation (e.g., two-pointer, binary search, sliding window, heap) and why it preserves target complexity.
-                - Outline the specific patch or code adjustment needed.
-
-                **Discussion Check-in:**
-                - A natural, collaborative question to verify alignment before making the code amendment (e.g., "I can make this specific amendment right here in the helper function; does that sound good to you before I update the code?").
-
-                Keep it articulate, natural, and direct. Write in clean first-person ("I"). Do NOT use artificial theatrical slang.
+                CRITICAL INSTRUCTION FOR "THOUGHT OUT LOUD":
+                Strictly 2 to 3 concise, punchy sentences. Maximum 45 words total.
+                - Sentence 1: Directly address the follow-up or constraint and state the exact algorithmic adaptation (e.g. "We can optimize this to O(n) using a two-pointer approach...").
+                - Sentence 2: Note the specific complexity impact or edge case handled.
+                - Sentence 3: 1 short collaborative check-in (e.g. "I can quickly patch this helper function; how does that look to you?").
+                ABSOLUTELY NO ESSAY, NO LENGTHY EXPLANATIONS, NO BULLETS. Keep it natural to speak aloud in 10 seconds.
 
                 OUTPUT FORMAT EXACTLY AS FOLLOWS:
-                ### 1. WHAT TO SAY ALOUD RIGHT NOW
-                (the approach discussion and collaborative check-in)
+                ### 1. THOUGHT OUT LOUD
+                (2 to 3 concise sentences under 45 words)
 
-                ### 2. EXACT PYTHON 3 IMPLEMENTATION
+                ### 2. PYTHON IMPLEMENTATION
                 ```python
                 # Only the modified function or specific patched code block
                 ```
@@ -683,28 +684,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 CURRENT SCREEN / CODERPAD BUFFER:
                 \(screenContext)
 
-                CRITICAL INSTRUCTION FOR "WHAT TO SAY ALOUD RIGHT NOW":
-                Provide a structured, natural verbal script for the candidate to discuss the approach collaboratively with the interviewer before writing code.
-                Structure it in 2 clear parts:
-
-                **Approach & Trade-offs:**
-                - Clearly state your understanding of the problem and key constraints.
-                - Briefly compare the baseline brute-force approach ($O(...)$) vs. the optimal approach ($O(...)$).
-                - Explain WHY this specific data structure or technique (e.g., hash map, two pointers, sliding window, monotonic stack, min-heap) is chosen and the time/space trade-off.
-                - Briefly outline the 2-3 logical execution steps.
-
-                **Discussion Check-in:**
-                - A natural, collaborative question to verify alignment with the interviewer before typing code (e.g., "Does this approach align with what you're looking for, or would you like me to consider any specific trade-offs before I start implementing?").
-
-                Keep it cohesive, articulate, and conversational. Write in clean first-person ("I"). Do NOT use fragmented micro-bullets, and do NOT use artificial theatrical slang.
+                CRITICAL INSTRUCTION FOR "THOUGHT OUT LOUD":
+                Strictly 2 to 3 concise, punchy sentences. Maximum 45 words total.
+                - Sentence 1: State the optimal algorithmic approach and core data structure (e.g. "I'll solve this in O(n) time using a hash map to track complements in a single pass.").
+                - Sentence 2: State why this is optimal vs brute force or note key edge case.
+                - Sentence 3: 1 short collaborative check-in question (e.g. "Does this approach sound good to you before I write the code?").
+                ABSOLUTELY NO ESSAY, NO LENGTHY EXPLANATIONS, NO BULLETS. Keep it natural to speak aloud in 10 seconds.
 
                 OUTPUT FORMAT EXACTLY AS FOLLOWS:
-                ### 1. WHAT TO SAY ALOUD RIGHT NOW
-                (the approach discussion and collaborative check-in)
+                ### 1. THOUGHT OUT LOUD
+                (2 to 3 concise sentences under 45 words)
 
-                ### 2. EXACT PYTHON 3 IMPLEMENTATION
+                ### 2. PYTHON IMPLEMENTATION
                 ```python
-                # Clean, minimal, production-grade Python 3 code matching the function signature in CoderPad.
+                # Clean, minimal, production-grade Python code matching the function signature in CoderPad.
                 ```
 
                 ### 3. TIME & SPACE COMPLEXITY
@@ -812,6 +805,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     // ========================================================================
     func startSessionRecording() {
         GeminiRESTEngine.shared.cancel()
+        if audioStream == nil && CGPreflightScreenCaptureAccess() {
+            startAudioCapture()
+        }
         isSessionRecording = true
         isSolving = false
         audioQueue.sync {
@@ -1527,8 +1523,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         let speechHtml = speech.isEmpty ? "" : """
         <div class="speech-card">
             <div class="card-label label-speech">
-                <span>🗣️ APPROACH DISCUSSION & WHAT TO SAY ALOUD</span>
-                <span style="font-size: 9.5px; color: var(--accent); font-weight: 600;">DISCUSS WITH INTERVIEWER</span>
+                <span>🗣️ Thought Out Loud</span>
             </div>
             <div class="speech-text">\(formatSpeechParagraphHTML(speech))</div>
         </div>
@@ -1537,7 +1532,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         let codeHtml = code.isEmpty ? "" : """
         <div class="card">
             <div class="card-label label-code">
-                <span>💻 EXACT PYTHON 3 IMPLEMENTATION</span>
+                <span>💻 Python Implementation</span>
                 <button class="copy-btn" onclick="copyCode()">Copy Code</button>
             </div>
             <pre><code id="code-snippet">\(escapeHtml(code))</code></pre>
@@ -1614,12 +1609,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             let p1 = raw.components(separatedBy: "### 1.")
             if p1.count > 1 {
                 let p2 = p1[1].components(separatedBy: "### 2.")
-                speech = p2[0].replacingOccurrences(of: "WHAT TO SAY ALOUD RIGHT NOW", with: "")
+                speech = p2[0].replacingOccurrences(of: "THOUGHT OUT LOUD", with: "")
+                              .replacingOccurrences(of: "Thought Out Loud", with: "")
+                              .replacingOccurrences(of: "WHAT TO SAY ALOUD RIGHT NOW", with: "")
                               .replacingOccurrences(of: "WHAT TO SAY ALOUD", with: "")
                               .trimmingCharacters(in: .whitespacesAndNewlines)
                 if p2.count > 1 {
                     let p3 = p2[1].components(separatedBy: "### 3.")
-                    code = p3[0].replacingOccurrences(of: "EXACT PYTHON 3 IMPLEMENTATION", with: "")
+                    code = p3[0].replacingOccurrences(of: "PYTHON IMPLEMENTATION", with: "")
+                                .replacingOccurrences(of: "Python Implementation", with: "")
+                                .replacingOccurrences(of: "Python Implementtation", with: "")
+                                .replacingOccurrences(of: "EXACT PYTHON 3 IMPLEMENTATION", with: "")
                                 .replacingOccurrences(of: "PYTHON 3 IMPLEMENTATION", with: "")
                                 .replacingOccurrences(of: "PYTHON 3 CODE", with: "")
                                 .trimmingCharacters(in: .whitespacesAndNewlines)
