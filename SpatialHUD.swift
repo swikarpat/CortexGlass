@@ -648,16 +648,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 \(screenContext)
 
                 CRITICAL INSTRUCTION FOR "WHAT TO SAY ALOUD RIGHT NOW":
-                Provide a cohesive, natural spoken paragraph (2-3 sentences) directly addressing the interviewer:
-                1. Acknowledge the constraint and state the optimal algorithmic adjustment (e.g., two-pointer, binary search, sliding window).
-                2. Explain the trade-off: how it achieves optimal auxiliary space while maintaining target time complexity.
-                3. Transition naturally to making the code amendment.
+                Provide a structured, natural verbal script directly discussing the follow-up approach with the interviewer.
+                Structure it in 2 clear parts:
 
-                Keep it articulate, natural, and direct. Do NOT use fragmented micro-bullets, and do NOT use artificial slang or theatrical phrases like "that feels like a cheat". Write in clean first-person ("I").
+                **Follow-up Approach & Trade-offs:**
+                - Acknowledge the interviewer's new constraint, scale, or edge-case query directly.
+                - Explain the optimal algorithmic adaptation (e.g., two-pointer, binary search, sliding window, heap) and why it preserves target complexity.
+                - Outline the specific patch or code adjustment needed.
+
+                **Discussion Check-in:**
+                - A natural, collaborative question to verify alignment before making the code amendment (e.g., "I can make this specific amendment right here in the helper function; does that sound good to you before I update the code?").
+
+                Keep it articulate, natural, and direct. Write in clean first-person ("I"). Do NOT use artificial theatrical slang.
 
                 OUTPUT FORMAT EXACTLY AS FOLLOWS:
                 ### 1. WHAT TO SAY ALOUD RIGHT NOW
-                (the 2-3 sentence cohesive spoken paragraph)
+                (the approach discussion and collaborative check-in)
 
                 ### 2. EXACT PYTHON 3 IMPLEMENTATION
                 ```python
@@ -678,18 +684,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 \(screenContext)
 
                 CRITICAL INSTRUCTION FOR "WHAT TO SAY ALOUD RIGHT NOW":
-                Provide a cohesive, natural spoken paragraph (3-4 sentences) for the candidate to speak aloud before coding.
-                Structure it to reflect natural engineering thinking:
-                1. State your understanding of the problem and key constraints clearly.
-                2. Briefly note the baseline brute-force approach and its Big-O limitation.
-                3. State the optimal algorithmic approach, trade-off, and target time/space complexity.
-                4. Conclude with a natural transition into coding.
+                Provide a structured, natural verbal script for the candidate to discuss the approach collaboratively with the interviewer before writing code.
+                Structure it in 2 clear parts:
 
-                Keep it cohesive, articulate, and conversational. Do NOT use fragmented micro-bullets, and do NOT use artificial slang or theatrical phrases like "that feels like a cheat". Write in clean first-person ("I").
+                **Approach & Trade-offs:**
+                - Clearly state your understanding of the problem and key constraints.
+                - Briefly compare the baseline brute-force approach ($O(...)$) vs. the optimal approach ($O(...)$).
+                - Explain WHY this specific data structure or technique (e.g., hash map, two pointers, sliding window, monotonic stack, min-heap) is chosen and the time/space trade-off.
+                - Briefly outline the 2-3 logical execution steps.
+
+                **Discussion Check-in:**
+                - A natural, collaborative question to verify alignment with the interviewer before typing code (e.g., "Does this approach align with what you're looking for, or would you like me to consider any specific trade-offs before I start implementing?").
+
+                Keep it cohesive, articulate, and conversational. Write in clean first-person ("I"). Do NOT use fragmented micro-bullets, and do NOT use artificial theatrical slang.
 
                 OUTPUT FORMAT EXACTLY AS FOLLOWS:
                 ### 1. WHAT TO SAY ALOUD RIGHT NOW
-                (the 3-4 sentence cohesive spoken paragraph)
+                (the approach discussion and collaborative check-in)
 
                 ### 2. EXACT PYTHON 3 IMPLEMENTATION
                 ```python
@@ -1516,8 +1527,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         let speechHtml = speech.isEmpty ? "" : """
         <div class="speech-card">
             <div class="card-label label-speech">
-                <span>🗣️ WHAT TO SAY ALOUD RIGHT NOW</span>
-                <span style="font-size: 9.5px; color: var(--accent); font-weight: 600;">READ OUT LOUD</span>
+                <span>🗣️ APPROACH DISCUSSION & WHAT TO SAY ALOUD</span>
+                <span style="font-size: 9.5px; color: var(--accent); font-weight: 600;">DISCUSS WITH INTERVIEWER</span>
             </div>
             <div class="speech-text">\(formatSpeechParagraphHTML(speech))</div>
         </div>
@@ -1662,10 +1673,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
+        func renderInline(_ str: String) -> String {
+            var escaped = escapeHtml(str)
+            while let r1 = escaped.range(of: "**"),
+                  let r2 = escaped.range(of: "**", range: r1.upperBound..<escaped.endIndex) {
+                let inside = String(escaped[r1.upperBound..<r2.lowerBound])
+                let replacement = "<strong style=\"color: var(--accent); font-weight: 700;\">\(inside)</strong>"
+                let fullRange = r1.lowerBound..<escaped.index(r2.lowerBound, offsetBy: 2)
+                escaped.replaceSubrange(fullRange, with: replacement)
+            }
+            return escaped.replacingOccurrences(of: "\n", with: "<br>")
+        }
+
         if paragraphs.count > 1 {
-            return paragraphs.map { "<p style=\"margin: 0 0 10px 0; line-height: 1.65;\">\(escapeHtml($0))</p>" }.joined()
+            return paragraphs.map { "<p style=\"margin: 0 0 10px 0; line-height: 1.65;\">\(renderInline($0))</p>" }.joined()
         } else {
-            return "<p style=\"margin: 0; line-height: 1.65;\">\(escapeHtml(text))</p>"
+            return "<p style=\"margin: 0; line-height: 1.65;\">\(renderInline(text))</p>"
         }
     }
 
