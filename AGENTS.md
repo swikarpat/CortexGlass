@@ -173,13 +173,16 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
 * **Decision**: Configure `SpatialHUD.swift` to prioritize `gemini-3.8-flash` with "Low" thinking budget (`thinkingBudget: 512`) by default, backed by an automatic failover cascade (`gemini-3-flash-preview` -> `gemini-2.5-flash` -> `gemini-flash-latest`) and configurable `GEMINI_THINKING_BUDGET` / `GEMINI_MODEL` environment variables. Enforce a 6.0s connection deadline and catch HTTP 429/404/503/400 errors for instant zero-stall transition.
 * **Engineering Rationale**: The user requested Gemini 3.8 Flash with Low thinking for enhanced reasoning depth. While Google's public developer API endpoint for `gemini-3.8-flash` currently exhibits rate limits/timeouts on certain tiers, Google's `gemini-3-flash-preview` and `gemini-2.5-flash` endpoints stream at sub-2.5s TTFT with Low thinking (`512` tokens) and sub-1.0s TTFT with thinking disabled (`0` tokens). The failover cascade guarantees the candidate receives state-of-the-art Gemini 3 reasoning whenever responsive, with instantaneous failover to Gemini 2.5 Flash if Google's 3.8 backend rate-limits or stalls.
 
-### ADR-013: "Thought Out Loud" Balanced Verbal Walkthrough & Clean Python Implementation
+### ADR-013: "Thought Out Loud" 3-Bullet Scannable Structure & Clean Python Implementation
 * **Status**: Accepted & Implemented
-* **Decision**: Refine verbal speech synthesis in `SpatialHUD.swift` (`buildPrompt`, `renderFinalCards`, and `parseSections`):
+* **Decision**: Refine verbal speech synthesis in `SpatialHUD.swift` (`buildPrompt`, `renderFinalCards`, and `formatSpeechParagraphHTML`):
   1. **"Thought Out Loud" Title**: Section 1 is titled `🗣️ Thought Out Loud`. The sub-badge `DISCUSS WITH INTERVIEWER` is completely removed for visual cleanliness.
-  2. **Balanced 4–5 Sentence Walkthrough**: Prompt enforces a balanced, natural verbal walkthrough (approx. 75–95 words) across 4 points: (1) Problem understanding, optimal algorithm & Big-O target; (2) Core algorithmic mechanism & data structures; (3) Edge case handling (bounds, duplicates, empty inputs); (4) Quick collaborative check-in (e.g., *"Does this approach look solid to you before I jump into implementing?"*). Spoken naturally in ~20 seconds without turning into an essay or bullet wall.
+  2. **Scannable 3-Bullet Structure**: To eliminate cognitive fatigue and avoid dense text paragraphs during live interviews, the verbal script is strictly formatted as **3 distinct bullet points** rendered via `.speech-bullets` with cyan accent bullets (`●`):
+     - `● **Approach & Complexity:**`: Chosen optimal algorithm, core data structures, and Big-O runtime & memory.
+     - `● **Mechanism & Edge Cases:**`: Logic of pointers/traversals, handling of boundaries, empty inputs, or duplicates.
+     - `● **Discuss Aloud:**`: Exact 1-sentence collaborative question to verify interviewer alignment aloud before typing.
   3. **"Python Implementation" Title**: Code block title updated from `EXACT PYTHON 3 IMPLEMENTATION` to `💻 Python Implementation` with `solution.py` file badge.
-  4. **Multi-Turn Amendment Support**: When `solveCount > 0`, "Thought Out Loud" similarly delivers 3 to 4 concise sentences (~60–75 words) stating the exact patch/adaptation without redundant code rewrites.
+  4. **Multi-Turn Amendment Support**: When `solveCount > 0`, "Thought Out Loud" similarly delivers 3 targeted bullets (**Follow-up Adaptation**, **Targeted Patch**, **Discuss Aloud**) without redundant code rewrites.
 
 ### ADR-017: Preflight ScreenCaptureKit Access & Zero Dialog Loop
 * **Status**: Accepted & Implemented

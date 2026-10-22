@@ -656,17 +656,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 \(screenContext)
 
                 CRITICAL INSTRUCTION FOR "THOUGHT OUT LOUD":
-                Provide a clean, conversational verbal script addressing the interviewer's follow-up.
-                Strictly 3 to 4 concise, substantive sentences (approx 60 to 75 words total).
-                - Sentence 1: Acknowledge the interviewer's new constraint, scale, or edge-case query directly.
-                - Sentence 2: Explain the optimal algorithmic adaptation and how it preserves target complexity.
-                - Sentence 3: Clarify the exact code adjustment or patch needed without rewriting existing working logic.
-                - Sentence 4: 1 brief collaborative check-in (e.g. "I can make this specific amendment right here in the helper function; how does that look to you?").
-                Write in clean first-person ("I"). NO essay, NO bullet walls.
+                Format as EXACTLY 3 clear, easy-to-read bullet points (use standard '- ').
+                Make each bullet point 1-2 punchy, conversational sentences to speak aloud:
+                - **Follow-up Adaptation:** Directly acknowledge the interviewer's new constraint and explain the algorithmic adjustment (e.g. switching to min-heap or sliding window) that preserves optimal complexity.
+                - **Targeted Patch:** Specify the exact function or lines to update without rewriting working code.
+                - **Discuss Aloud:** 1 natural collaborative check-in before updating (e.g., "I can make this specific amendment right here in the helper; how does that look to you?").
+                Write in clean first-person ("I"). Strictly 3 bullet points. No dense paragraphs, no essays.
 
                 OUTPUT FORMAT EXACTLY AS FOLLOWS:
                 ### 1. THOUGHT OUT LOUD
-                (3 to 4 concise sentences, approx 60-75 words. Adaptation, complexity, patch outline, and check-in.)
+                - **Follow-up Adaptation:** ...
+                - **Targeted Patch:** ...
+                - **Discuss Aloud:** ...
 
                 ### 2. PYTHON IMPLEMENTATION
                 ```python
@@ -687,18 +688,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 \(screenContext)
 
                 CRITICAL INSTRUCTION FOR "THOUGHT OUT LOUD":
-                Provide a clean, conversational verbal walkthrough for the candidate to speak aloud.
-                Strictly 4 to 5 concise, substantive sentences (approx 75 to 95 words total).
-                Structure it across 4 clear points:
-                - Sentence 1: State the problem understanding, chosen optimal algorithmic approach (e.g. binary search on partition, two pointers, monotonic stack, hash map), and target Big-O runtime/space.
-                - Sentence 2-3: Explain the core algorithmic mechanism and why this data structure solves the problem efficiently.
-                - Sentence 4: Explicitly mention handling of key edge cases (bounds, duplicates, empty inputs, or extremes).
-                - Sentence 5: 1 brief collaborative check-in question (e.g. "Does this approach look solid to you before I jump into implementing?").
-                Write in clean, natural first-person ("I"). NO long bullet lists, NO massive essay walls. Keep it easy to glance at and recite naturally in ~20 seconds.
+                Format as EXACTLY 3 clear, easy-to-read bullet points (use standard '- ').
+                Make each bullet point 1-2 punchy, conversational sentences to speak aloud:
+                - **Approach & Complexity:** State your chosen optimal algorithmic approach (e.g., hash map single pass, binary search partition, two pointers), why it is optimal, and target Big-O time and space.
+                - **Mechanism & Edge Cases:** Explain the core logic of the data structure/pointers and how boundaries, duplicates, or empty inputs are handled.
+                - **Discuss Aloud:** 1 natural collaborative question to confirm alignment with the interviewer before coding (e.g., "Does this approach look solid to you before I jump into implementing?").
+                Write in clean first-person ("I"). Strictly 3 bullet points. No dense paragraphs, no essays.
 
                 OUTPUT FORMAT EXACTLY AS FOLLOWS:
                 ### 1. THOUGHT OUT LOUD
-                (4 to 5 concise sentences, approx 75-95 words. Strategy, mechanism, edge case, and check-in.)
+                - **Approach & Complexity:** ...
+                - **Mechanism & Edge Cases:** ...
+                - **Discuss Aloud:** ...
 
                 ### 2. PYTHON IMPLEMENTATION
                 ```python
@@ -1381,10 +1382,33 @@ struct PythonSyntaxHighlighter {
             .label-code { color: #7c3aed; }
             .label-complexity { color: #059669; }
             .speech-text {
-                font-size: 14px;
+                font-size: 13.5px;
                 font-weight: 500;
                 color: var(--speech-text);
-                line-height: 1.65;
+                line-height: 1.6;
+            }
+            .speech-bullets {
+                list-style: none;
+                padding: 0;
+                margin: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .speech-bullets li {
+                position: relative;
+                padding-left: 20px;
+                font-size: 13.5px;
+                line-height: 1.55;
+                color: var(--speech-text);
+            }
+            .speech-bullets li::before {
+                content: "●";
+                position: absolute;
+                left: 2px;
+                top: 0px;
+                color: var(--accent);
+                font-size: 11px;
             }
             pre {
                 background: var(--code-bg);
@@ -1629,10 +1653,33 @@ struct PythonSyntaxHighlighter {
             .label-code { color: #a78bfa; }
             .label-complexity { color: #34d399; }
             .speech-text {
-                font-size: 14px;
+                font-size: 13.5px;
                 font-weight: 500;
                 color: var(--speech-text);
                 line-height: 1.6;
+            }
+            .speech-bullets {
+                list-style: none;
+                padding: 0;
+                margin: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .speech-bullets li {
+                position: relative;
+                padding-left: 20px;
+                font-size: 13.5px;
+                line-height: 1.55;
+                color: var(--speech-text);
+            }
+            .speech-bullets li::before {
+                content: "●";
+                position: absolute;
+                left: 2px;
+                top: 0px;
+                color: var(--accent);
+                font-size: 11px;
             }
             pre {
                 background: var(--code-bg);
@@ -2032,10 +2079,6 @@ struct PythonSyntaxHighlighter {
                    .replacingOccurrences(of: ")$", with: ")")
                    .replacingOccurrences(of: "$", with: "")
 
-        let paragraphs = text.components(separatedBy: "\n\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
         func renderInline(_ str: String) -> String {
             var escaped = escapeHtml(str)
             while let r1 = escaped.range(of: "**"),
@@ -2047,6 +2090,35 @@ struct PythonSyntaxHighlighter {
             }
             return escaped.replacingOccurrences(of: "\n", with: "<br>")
         }
+
+        let rawLines = text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        let bulletPrefixes = ["- ", "* ", "• "]
+        let hasBullets = rawLines.contains { line in
+            bulletPrefixes.contains { line.hasPrefix($0) } || line.range(of: #"^\d+[\.\)]\s"#, options: .regularExpression) != nil
+        }
+
+        if hasBullets {
+            var items: [String] = []
+            for line in rawLines {
+                var content = line
+                for p in bulletPrefixes where content.hasPrefix(p) {
+                    content = String(content.dropFirst(p.count)).trimmingCharacters(in: .whitespaces)
+                    break
+                }
+                if let numRange = content.range(of: #"^\d+[\.\)]\s"#, options: .regularExpression) {
+                    content = String(content[numRange.upperBound...]).trimmingCharacters(in: .whitespaces)
+                }
+                items.append("<li>\(renderInline(content))</li>")
+            }
+            return "<ul class=\"speech-bullets\">\(items.joined())</ul>"
+        }
+
+        let paragraphs = text.components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
 
         if paragraphs.count > 1 {
             return paragraphs.map { "<p style=\"margin: 0 0 10px 0; line-height: 1.65;\">\(renderInline($0))</p>" }.joined()
