@@ -183,6 +183,7 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
      - `● **Discuss Aloud:**`: Exact 1-sentence collaborative question to verify interviewer alignment aloud before typing.
   3. **"Python Implementation" Title**: Code block title updated from `EXACT PYTHON 3 IMPLEMENTATION` to `💻 Python Implementation` with `solution.py` file badge.
   4. **Multi-Turn Amendment Support**: When `solveCount > 0`, "Thought Out Loud" similarly delivers 3 targeted bullets (**Follow-up Adaptation**, **Targeted Patch**, **Discuss Aloud**) without redundant code rewrites.
+  5. **HUD Header & Brand Refinement**: Brand title updated from `CORTEXGLASS HUD` to `SPATIAL HUD` across all HUD screens (`renderIdleHUD`, `renderRecordingHUD`, `renderSolvingHUD`, `renderStreamingHUDHeader`, `renderFinalCards`, `renderErrorHUD`). The top-right latency/TTFT pill (`⚡ X.XXs TTFT`) was eliminated from the HUD views to maintain an uncluttered header focused strictly on the `SPATIAL HUD` brand and active mode badge.
 
 ### ADR-017: Preflight ScreenCaptureKit Access & Zero Dialog Loop
 * **Status**: Accepted & Implemented

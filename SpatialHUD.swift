@@ -575,8 +575,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     // 6. High-Speed Silent Screen Capture (Apple Vision OCR with Zero Self-Capture)
     // ========================================================================
     private static let hudScrubKeywords = [
-        "cortexglass", "thought out loud", "what to say aloud", "python implementation", "exact python 3", "time & space complexity",
-        "quick operational guide", "direct gemini rest", "spatialhud", "opt + s", "opt + return"
+        "cortexglass", "spatial hud", "spatialhud", "thought out loud", "what to say aloud", "python implementation", "exact python 3", "time & space complexity",
+        "quick operational guide", "direct gemini rest", "opt + s", "opt + return"
     ]
 
     func captureScreenText() async -> String {
@@ -1784,7 +1784,7 @@ struct PythonSyntaxHighlighter {
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
         <div class="drag-bar"><div class="drag-handle"></div></div>
         <div class="header">
-            <div class="brand">CORTEXGLASS HUD</div>
+            <div class="brand">SPATIAL HUD</div>
             <div class="mode-badge">\(currentMode.tag)</div>
             <div class="pill pill-ready">● READY</div>
         </div>
@@ -1795,7 +1795,6 @@ struct PythonSyntaxHighlighter {
                 Sub-2s latency streaming • On-device Whisper ANE • Screen OCR • Zero CoderPad focus theft
             </div>
             <div style="display: flex; justify-content: center; gap: 8px; font-size: 11px;">
-                <span class="pill pill-latency">⚡ ~1.8s TTFT</span>
                 <span class="pill pill-latency">\(modelBadge)</span>
                 <span class="pill pill-latency">\(themeBadge)</span>
             </div>
@@ -1828,7 +1827,7 @@ struct PythonSyntaxHighlighter {
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
         <div class="drag-bar"><div class="drag-handle"></div></div>
         <div class="header">
-            <div class="brand">CORTEXGLASS HUD</div>
+            <div class="brand">SPATIAL HUD</div>
             <div class="mode-badge">\(currentMode.tag)</div>
             <div class="pill pill-rec">🎙️ RECORDING...</div>
         </div>
@@ -1858,7 +1857,7 @@ struct PythonSyntaxHighlighter {
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
         <div class="drag-bar"><div class="drag-handle"></div></div>
         <div class="header">
-            <div class="brand">CORTEXGLASS HUD</div>
+            <div class="brand">SPATIAL HUD</div>
             <div class="mode-badge">\(currentMode.tag)</div>
             <div class="pill pill-solve">⚡ SOLVING...</div>
         </div>
@@ -1887,7 +1886,7 @@ struct PythonSyntaxHighlighter {
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
         <div class="drag-bar"><div class="drag-handle"></div></div>
         <div class="header">
-            <div class="brand">CORTEXGLASS HUD</div>
+            <div class="brand">SPATIAL HUD</div>
             <div class="mode-badge">\(currentMode.tag) • \(roundLabel)</div>
             <div class="pill pill-solve">⚡ STREAMING...</div>
         </div>
@@ -1959,9 +1958,8 @@ struct PythonSyntaxHighlighter {
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
         <div class="drag-bar"><div class="drag-handle"></div></div>
         <div class="header">
-            <div class="brand">CORTEXGLASS HUD</div>
+            <div class="brand">SPATIAL HUD</div>
             <div class="mode-badge">\(currentMode.tag) • \(roundLabel)</div>
-            <div class="pill pill-latency">⚡ \(String(format: "%.2f", totalDurationSec))s (\(String(format: "%.2f", ttftSec))s TTFT)</div>
         </div>
         \(speechHtml)
         \(codeHtml)
@@ -1993,7 +1991,7 @@ struct PythonSyntaxHighlighter {
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
         <div class="drag-bar"><div class="drag-handle"></div></div>
         <div class="header">
-            <div class="brand">CORTEXGLASS HUD</div>
+            <div class="brand">SPATIAL HUD</div>
             <div class="mode-badge">\(currentMode.tag)</div>
             <div class="pill" style="background: var(--rose-bg); color: var(--rose); border: 1px solid var(--rose-border);">❌ ERROR</div>
         </div>
