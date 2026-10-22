@@ -226,6 +226,14 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
 * **Decision**: When `captureScreenText()` executes on-device Apple Vision OCR, temporarily drop `panel.alphaValue = 0` on the MainActor for 25ms prior to calling `SCScreenshotManager.captureImage`, and immediately restore `panel.alphaValue = savedAlpha` upon frame grab. Supplement with a case-insensitive keyword scrubber (`hudScrubKeywords`) that removes any telemetry or HUD UI tokens (`cortexglass`, `what to say aloud`, `exact python 3`, `quick operational guide`, `spatialhud`).
 * **Engineering Rationale**: ScreenCaptureKit's `excludingWindows` parameter filters windows listed in `SCShareableContent`, but windows configured with `sharingType = .none` are already excluded from `SCShareableContent.windows` by macOS. When `captureImage` grabs the full display buffer, the compositor could inadvertently capture the local HUD window's pixels if it is currently displayed on screen. Setting `alphaValue = 0` for an imperceptible 25ms WindowServer frame cycle guarantees the GPU compositor composites 100% of the underlying background application (CoderPad, browser problem text, code editor) with zero HUD occlusion. Scrubbing keywords ensures defense-in-depth protection against prompt contamination.
 
+### ADR-017: Unified CSS Variable Architecture & Modular HTML Layout Consolidation
+* **Status**: Accepted & Implemented
+* **Decision**: Refactor `SpatialHUD.swift` to systematically eliminate structural duplication across stylesheets, templates, and lexers without altering runtime behavior:
+  1. **Unified CSS Architecture**: Consolidate Daylight and Night theme definitions into dynamic `:root` CSS variables, emitting a single shared ruleset once rather than duplicating full 270-line stylesheets.
+  2. **Consolidated HTML Layout Helper (`renderHUD`)**: Abstract common document boilerplate (`<!DOCTYPE html>`, drag handle, header branding, badges, footers, scripts) into a unified `renderHUD(badge:pillHtml:body:footerLeft:footerRight:scripts:)` renderer used across idle, recording, solving, streaming, card presentation, and error states.
+  3. **Streamlined Python Syntax Highlighter**: Consolidate quote parsing (`"`, `'`, and prefixed `f|r|b` variants) into a unified token scanner, fix half-open boundary indexing (`..<`) for inline triple quotes, and reuse static `AppDelegate.escapeHtml`.
+  4. **Code Footprint Reduction**: Reduced `SpatialHUD.swift` from over 2,354 lines down to ~1,732 lines (>26% reduction, saving 622+ lines) while preserving 100% of the cognitive routing, Whisper ANE, Gemini REST SSE streaming, and zero-focus stealth compositor capabilities.
+
 ---
 
 ## 5. Build & Compilation Commands & Non-IDE Launching

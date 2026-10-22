@@ -263,29 +263,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         case coding, systemDesign, behavioral, projectDeepDive
 
         var color: CGColor {
-            let isDaylight = AppDelegate.isDaylightTheme()
-            if isDaylight {
-                switch self {
-                case .coding:          return NSColor(red: 0.05, green: 0.55, blue: 0.90, alpha: 0.90).cgColor // Daylight Sky Blue
-                case .systemDesign:    return NSColor(red: 0.50, green: 0.25, blue: 0.85, alpha: 0.90).cgColor // Daylight Violet
-                case .behavioral:      return NSColor(red: 0.88, green: 0.20, blue: 0.35, alpha: 0.90).cgColor // Daylight Rose
-                case .projectDeepDive: return NSColor(red: 0.85, green: 0.50, blue: 0.05, alpha: 0.90).cgColor // Daylight Amber
-                }
-            } else {
-                switch self {
-                case .coding:          return NSColor(red: 0.22, green: 0.74, blue: 0.97, alpha: 0.95).cgColor // Electric Cyan
-                case .systemDesign:    return NSColor(red: 0.65, green: 0.33, blue: 0.97, alpha: 0.95).cgColor // Neon Violet
-                case .behavioral:      return NSColor(red: 0.96, green: 0.25, blue: 0.37, alpha: 0.95).cgColor // Rose Red
-                case .projectDeepDive: return NSColor(red: 0.96, green: 0.62, blue: 0.04, alpha: 0.95).cgColor // Amber Gold
-                }
+            let d = AppDelegate.isDaylightTheme()
+            switch self {
+            case .coding:          return (d ? NSColor(red: 0.05, green: 0.55, blue: 0.90, alpha: 0.90) : NSColor(red: 0.22, green: 0.74, blue: 0.97, alpha: 0.95)).cgColor
+            case .systemDesign:    return (d ? NSColor(red: 0.50, green: 0.25, blue: 0.85, alpha: 0.90) : NSColor(red: 0.65, green: 0.33, blue: 0.97, alpha: 0.95)).cgColor
+            case .behavioral:      return (d ? NSColor(red: 0.88, green: 0.20, blue: 0.35, alpha: 0.90) : NSColor(red: 0.96, green: 0.25, blue: 0.37, alpha: 0.95)).cgColor
+            case .projectDeepDive: return (d ? NSColor(red: 0.85, green: 0.50, blue: 0.05, alpha: 0.90) : NSColor(red: 0.96, green: 0.62, blue: 0.04, alpha: 0.95)).cgColor
             }
         }
 
         var label: String {
             switch self {
-            case .coding:          return "Coding / DSA"
-            case .systemDesign:    return "System Design (ASCII & Scaled Architecture)"
-            case .behavioral:      return "Leadership & Behavioral (STAR Method)"
+            case .coding: return "Coding / DSA"
+            case .systemDesign: return "System Design (ASCII & Scaled Architecture)"
+            case .behavioral: return "Leadership & Behavioral (STAR Method)"
             case .projectDeepDive: return "Past Project Retrospective & System Architecture"
             }
         }
@@ -645,71 +636,48 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
     // ========================================================================
     func buildPrompt(spokenInput: String, screenContext: String) -> String {
         if currentMode == .coding {
-            if solveCount > 0 {
-                return """
-                ROLE: Senior Software Engineer in a live technical coding interview follow-up on CoderPad.
+            let isFollowUp = solveCount > 0
+            let roleHeader = isFollowUp
+                ? "ROLE: Senior Software Engineer in a live technical coding interview follow-up on CoderPad.\n\nINTERVIEWER SPOKEN FOLLOW-UP QUERY:\n\"\(spokenInput)\"\n\nCURRENT CODE ON SCREEN:\n\(screenContext)"
+                : "ROLE: Senior Software Engineer in a live technical coding interview on CoderPad.\n\nINTERVIEWER AUDIO:\n\"\(spokenInput)\"\n\nCURRENT SCREEN / CODERPAD BUFFER:\n\(screenContext)"
 
-                INTERVIEWER SPOKEN FOLLOW-UP QUERY:
-                "\(spokenInput)"
+            let b1 = isFollowUp
+                ? "- **Follow-up Adaptation:** Directly acknowledge the interviewer's new constraint and explain the algorithmic adjustment (e.g. switching to min-heap or sliding window) that preserves optimal complexity."
+                : "- **Approach & Complexity:** State your chosen optimal algorithmic approach (e.g., hash map single pass, binary search partition, two pointers), why it is optimal, and target Big-O time and space."
+            let b2 = isFollowUp
+                ? "- **Targeted Patch:** Specify the exact function or lines to update without rewriting working code."
+                : "- **Mechanism & Edge Cases:** Explain the core logic of the data structure/pointers and how boundaries, duplicates, or empty inputs are handled."
+            let b3 = isFollowUp
+                ? "- **Discuss Aloud:** 1 natural collaborative check-in before updating (e.g., \"I can make this specific amendment right here in the helper; how does that look to you?\")."
+                : "- **Discuss Aloud:** 1 natural collaborative question to confirm alignment with the interviewer before coding (e.g., \"Does this approach look solid to you before I jump into implementing?\")."
 
-                CURRENT CODE ON SCREEN:
-                \(screenContext)
+            let codeComment = isFollowUp ? "# Only the modified function or specific patched code block" : "# Clean, minimal, production-grade Python code matching the function signature in CoderPad."
+            let out1 = isFollowUp ? "- **Follow-up Adaptation:** ...\n- **Targeted Patch:** ..." : "- **Approach & Complexity:** ...\n- **Mechanism & Edge Cases:** ..."
 
-                CRITICAL INSTRUCTION FOR "THOUGHT OUT LOUD":
-                Format as EXACTLY 3 clear, easy-to-read bullet points (use standard '- ').
-                Make each bullet point 1-2 punchy, conversational sentences to speak aloud:
-                - **Follow-up Adaptation:** Directly acknowledge the interviewer's new constraint and explain the algorithmic adjustment (e.g. switching to min-heap or sliding window) that preserves optimal complexity.
-                - **Targeted Patch:** Specify the exact function or lines to update without rewriting working code.
-                - **Discuss Aloud:** 1 natural collaborative check-in before updating (e.g., "I can make this specific amendment right here in the helper; how does that look to you?").
-                Write in clean first-person ("I"). Strictly 3 bullet points. No dense paragraphs, no essays.
+            return """
+            \(roleHeader)
 
-                OUTPUT FORMAT EXACTLY AS FOLLOWS:
-                ### 1. THOUGHT OUT LOUD
-                - **Follow-up Adaptation:** ...
-                - **Targeted Patch:** ...
-                - **Discuss Aloud:** ...
+            CRITICAL INSTRUCTION FOR "THOUGHT OUT LOUD":
+            Format as EXACTLY 3 clear, easy-to-read bullet points (use standard '- ').
+            Make each bullet point 1-2 punchy, conversational sentences to speak aloud:
+            \(b1)
+            \(b2)
+            \(b3)
+            Write in clean first-person ("I"). Strictly 3 bullet points. No dense paragraphs, no essays.
 
-                ### 2. PYTHON IMPLEMENTATION
-                ```python
-                # Only the modified function or specific patched code block
-                ```
+            OUTPUT FORMAT EXACTLY AS FOLLOWS:
+            ### 1. THOUGHT OUT LOUD
+            \(out1)
+            - **Discuss Aloud:** ...
 
-                ### 3. TIME & SPACE COMPLEXITY
-                Time: O(...) | Space: O(...)
-                """
-            } else {
-                return """
-                ROLE: Senior Software Engineer in a live technical coding interview on CoderPad.
+            ### 2. PYTHON IMPLEMENTATION
+            ```python
+            \(codeComment)
+            ```
 
-                INTERVIEWER AUDIO:
-                "\(spokenInput)"
-
-                CURRENT SCREEN / CODERPAD BUFFER:
-                \(screenContext)
-
-                CRITICAL INSTRUCTION FOR "THOUGHT OUT LOUD":
-                Format as EXACTLY 3 clear, easy-to-read bullet points (use standard '- ').
-                Make each bullet point 1-2 punchy, conversational sentences to speak aloud:
-                - **Approach & Complexity:** State your chosen optimal algorithmic approach (e.g., hash map single pass, binary search partition, two pointers), why it is optimal, and target Big-O time and space.
-                - **Mechanism & Edge Cases:** Explain the core logic of the data structure/pointers and how boundaries, duplicates, or empty inputs are handled.
-                - **Discuss Aloud:** 1 natural collaborative question to confirm alignment with the interviewer before coding (e.g., "Does this approach look solid to you before I jump into implementing?").
-                Write in clean first-person ("I"). Strictly 3 bullet points. No dense paragraphs, no essays.
-
-                OUTPUT FORMAT EXACTLY AS FOLLOWS:
-                ### 1. THOUGHT OUT LOUD
-                - **Approach & Complexity:** ...
-                - **Mechanism & Edge Cases:** ...
-                - **Discuss Aloud:** ...
-
-                ### 2. PYTHON IMPLEMENTATION
-                ```python
-                # Clean, minimal, production-grade Python code matching the function signature in CoderPad.
-                ```
-
-                ### 3. TIME & SPACE COMPLEXITY
-                Time: O(...) | Space: O(...)
-                """
-            }
+            ### 3. TIME & SPACE COMPLEXITY
+            Time: O(...) | Space: O(...)
+            """
         }
 
         var baseInstructions = """
@@ -969,65 +937,50 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
 // ========================================================================
 struct PythonSyntaxHighlighter {
     static func highlight(code: String) -> String {
-        let lines = code.components(separatedBy: "\n")
-        var formattedLines: [String] = []
-        var multiLineDelimiter: String? = nil
+        var formatted: [String] = []
+        var multiLineDelim: String? = nil
 
-        for (idx, rawLine) in lines.enumerated() {
-            let lineNum = idx + 1
-            let (highlighted, nextDelimiter) = highlightLine(rawLine, inDelimiter: multiLineDelimiter)
-            multiLineDelimiter = nextDelimiter
-            let lineHtml = "<div class=\"code-line\"><span class=\"line-num\">\(lineNum)</span><span class=\"line-content\">\(highlighted)</span></div>"
-            formattedLines.append(lineHtml)
+        for (idx, line) in code.components(separatedBy: "\n").enumerated() {
+            let (hl, next) = highlightLine(line, inDelimiter: multiLineDelim)
+            multiLineDelim = next
+            formatted.append("<div class=\"code-line\"><span class=\"line-num\">\(idx + 1)</span><span class=\"line-content\">\(hl)</span></div>")
         }
-
-        return formattedLines.joined(separator: "\n")
+        return formatted.joined(separator: "\n")
     }
 
     private static func highlightLine(_ line: String, inDelimiter: String?) -> (String, String?) {
         if let delim = inDelimiter {
             if let closeRange = line.range(of: delim) {
                 let strPart = String(line[..<closeRange.upperBound])
-                let restPart = String(line[closeRange.upperBound...])
-                let highlightedRest = highlightCodePart(restPart)
-                return ("<span class=\"py-str\">\(escape(strPart))</span>" + highlightedRest, nil)
-            } else {
-                return ("<span class=\"py-str\">\(escape(line))</span>", delim)
+                let rest = highlightCodePart(String(line[closeRange.upperBound...]))
+                return ("<span class=\"py-str\">\(AppDelegate.escapeHtml(strPart))</span>" + rest, nil)
             }
+            return ("<span class=\"py-str\">\(AppDelegate.escapeHtml(line))</span>", delim)
         }
 
-        let d3 = "\"\"\""
-        let s3 = "'''"
-        var activeDelim: String? = nil
-        var firstDelimRange: Range<String.Index>? = nil
-
+        let d3 = "\"\"\"", s3 = "'''"
+        var firstDelim: (String, Range<String.Index>)? = nil
         if let r1 = line.range(of: d3), let r2 = line.range(of: s3) {
-            if r1.lowerBound < r2.lowerBound {
-                firstDelimRange = r1; activeDelim = d3
-            } else {
-                firstDelimRange = r2; activeDelim = s3
-            }
+            firstDelim = r1.lowerBound < r2.lowerBound ? (d3, r1) : (s3, r2)
         } else if let r1 = line.range(of: d3) {
-            firstDelimRange = r1; activeDelim = d3
+            firstDelim = (d3, r1)
         } else if let r2 = line.range(of: s3) {
-            firstDelimRange = r2; activeDelim = s3
+            firstDelim = (s3, r2)
         }
 
-        if let delim = activeDelim, let range = firstDelimRange {
+        if let (delim, range) = firstDelim {
             if let cIdx = findCommentIndex(in: line), cIdx < range.lowerBound {
                 return (highlightCodeWithComment(line), nil)
             }
-            let before = String(line[..<range.lowerBound])
+            let before = highlightCodePart(String(line[..<range.lowerBound]))
             let afterStart = line[range.upperBound...]
             if let closeRange = afterStart.range(of: delim) {
-                let fullStr = String(line[range.lowerBound...closeRange.upperBound])
-                let rest = String(line[closeRange.upperBound...])
-                let res = highlightCodePart(before) + "<span class=\"py-str\">\(escape(fullStr))</span>" + highlightCodePart(rest)
-                return (res, nil)
+                let fullStr = String(line[range.lowerBound..<closeRange.upperBound])
+                let rest = highlightCodePart(String(line[closeRange.upperBound...]))
+                return (before + "<span class=\"py-str\">\(AppDelegate.escapeHtml(fullStr))</span>" + rest, nil)
             } else {
                 let strPart = String(line[range.lowerBound...])
-                let res = highlightCodePart(before) + "<span class=\"py-str\">\(escape(strPart))</span>"
-                return (res, delim)
+                return (before + "<span class=\"py-str\">\(AppDelegate.escapeHtml(strPart))</span>", delim)
             }
         }
 
@@ -1035,169 +988,107 @@ struct PythonSyntaxHighlighter {
     }
 
     private static func highlightCodeWithComment(_ line: String) -> String {
-        if let commentIdx = findCommentIndex(in: line) {
-            let codePart = String(line[..<commentIdx])
-            let commentStr = String(line[commentIdx...])
-            return highlightCodePart(codePart) + "<span class=\"py-comment\">\(escape(commentStr))</span>"
-        }
-        return highlightCodePart(line)
+        guard let commentIdx = findCommentIndex(in: line) else { return highlightCodePart(line) }
+        let codePart = String(line[..<commentIdx])
+        let commentStr = String(line[commentIdx...])
+        return highlightCodePart(codePart) + "<span class=\"py-comment\">\(AppDelegate.escapeHtml(commentStr))</span>"
     }
 
-    private static func highlightCodePart(_ codePart: String) -> String {
-        var result = ""
-        var i = codePart.startIndex
+    private static func highlightCodePart(_ code: String) -> String {
+        var res = ""
+        var i = code.startIndex
 
-        while i < codePart.endIndex {
-            let c = codePart[i]
+        while i < code.endIndex {
+            let c = code[i]
 
-            // Prefixed strings: f"...", r"...", b"..."
-            if (c == "f" || c == "F" || c == "r" || c == "R" || c == "b" || c == "B"),
-               let next = codePart.index(i, offsetBy: 1, limitedBy: codePart.endIndex),
-               next < codePart.endIndex && (codePart[next] == "\"" || codePart[next] == "'") {
-                let quote = codePart[next]
-                let strStart = i
-                i = codePart.index(after: next)
+            // String literals: "...", '...', f"...", r"...", b"..."
+            let isPrefix = (c == "f" || c == "F" || c == "r" || c == "R" || c == "b" || c == "B")
+            let nextI = code.index(after: i)
+            let isQuote = (c == "\"" || c == "'")
+            let isPrefixedQuote = isPrefix && nextI < code.endIndex && (code[nextI] == "\"" || code[nextI] == "'")
+
+            if isQuote || isPrefixedQuote {
+                let quote = isQuote ? c : code[nextI]
+                let start = i
+                i = code.index(after: isQuote ? i : nextI)
                 var escaped = false
-                while i < codePart.endIndex {
-                    let cur = codePart[i]
-                    if escaped {
-                        escaped = false
-                    } else if cur == "\\" {
-                        escaped = true
-                    } else if cur == quote {
-                        i = codePart.index(after: i)
-                        break
-                    }
-                    i = codePart.index(after: i)
+                while i < code.endIndex {
+                    let cur = code[i]
+                    if escaped { escaped = false }
+                    else if cur == "\\" { escaped = true }
+                    else if cur == quote { i = code.index(after: i); break }
+                    i = code.index(after: i)
                 }
-                let strLiteral = String(codePart[strStart..<i])
-                result += "<span class=\"py-str\">\(escape(strLiteral))</span>"
+                res += "<span class=\"py-str\">\(AppDelegate.escapeHtml(String(code[start..<i])))</span>"
                 continue
             }
 
-            // Standard strings: "..." or '...'
-            if c == "\"" || c == "'" {
-                let quote = c
-                let strStart = i
-                i = codePart.index(after: i)
-                var escaped = false
-                while i < codePart.endIndex {
-                    let cur = codePart[i]
-                    if escaped {
-                        escaped = false
-                    } else if cur == "\\" {
-                        escaped = true
-                    } else if cur == quote {
-                        i = codePart.index(after: i)
-                        break
-                    }
-                    i = codePart.index(after: i)
-                }
-                let strLiteral = String(codePart[strStart..<i])
-                result += "<span class=\"py-str\">\(escape(strLiteral))</span>"
-                continue
-            }
-
-            // Identifiers / Keywords
             if c.isLetter || c == "_" {
-                let idStart = i
-                while i < codePart.endIndex && (codePart[i].isLetter || codePart[i].isNumber || codePart[i] == "_") {
-                    i = codePart.index(after: i)
+                let start = i
+                while i < code.endIndex && (code[i].isLetter || code[i].isNumber || code[i] == "_") {
+                    i = code.index(after: i)
                 }
-                let word = String(codePart[idStart..<i])
+                let word = String(code[start..<i])
+                let prefix = code[..<start].trimmingCharacters(in: .whitespaces)
 
-                let prefix = codePart[..<idStart].trimmingCharacters(in: .whitespaces)
-                let isDef = prefix.hasSuffix("def")
-                let isClass = prefix.hasSuffix("class")
-
-                if isDef {
-                    result += "<span class=\"py-fn\">\(escape(word))</span>"
-                } else if isClass {
-                    result += "<span class=\"py-class\">\(escape(word))</span>"
+                if prefix.hasSuffix("def") {
+                    res += "<span class=\"py-fn\">\(AppDelegate.escapeHtml(word))</span>"
+                } else if prefix.hasSuffix("class") {
+                    res += "<span class=\"py-class\">\(AppDelegate.escapeHtml(word))</span>"
                 } else if keywords.contains(word) {
-                    result += "<span class=\"py-kw\">\(escape(word))</span>"
+                    res += "<span class=\"py-kw\">\(AppDelegate.escapeHtml(word))</span>"
                 } else if builtins.contains(word) {
-                    result += "<span class=\"py-type\">\(escape(word))</span>"
+                    res += "<span class=\"py-type\">\(AppDelegate.escapeHtml(word))</span>"
                 } else if specialConstants.contains(word) {
-                    result += "<span class=\"py-const\">\(escape(word))</span>"
+                    res += "<span class=\"py-const\">\(AppDelegate.escapeHtml(word))</span>"
                 } else {
-                    var nextIdx = i
-                    while nextIdx < codePart.endIndex && codePart[nextIdx].isWhitespace {
-                        nextIdx = codePart.index(after: nextIdx)
-                    }
-                    if nextIdx < codePart.endIndex && codePart[nextIdx] == "(" {
-                        result += "<span class=\"py-call\">\(escape(word))</span>"
+                    var n = i
+                    while n < code.endIndex && code[n].isWhitespace { n = code.index(after: n) }
+                    if n < code.endIndex && code[n] == "(" {
+                        res += "<span class=\"py-call\">\(AppDelegate.escapeHtml(word))</span>"
                     } else {
-                        result += escape(word)
+                        res += AppDelegate.escapeHtml(word)
                     }
                 }
                 continue
             }
 
-            // Numbers
             if c.isNumber {
-                let numStart = i
-                while i < codePart.endIndex && (codePart[i].isNumber || codePart[i] == "." || codePart[i] == "_" || codePart[i] == "e" || codePart[i] == "E") {
-                    i = codePart.index(after: i)
+                let start = i
+                while i < code.endIndex && (code[i].isNumber || code[i] == "." || code[i] == "_" || code[i] == "e" || code[i] == "E") {
+                    i = code.index(after: i)
                 }
-                let numStr = String(codePart[numStart..<i])
-                result += "<span class=\"py-num\">\(escape(numStr))</span>"
+                res += "<span class=\"py-num\">\(AppDelegate.escapeHtml(String(code[start..<i])))</span>"
                 continue
             }
 
-            // Decorators
             if c == "@" {
-                let decStart = i
-                i = codePart.index(after: i)
-                while i < codePart.endIndex && (codePart[i].isLetter || codePart[i].isNumber || codePart[i] == "_") {
-                    i = codePart.index(after: i)
+                let start = i
+                i = code.index(after: i)
+                while i < code.endIndex && (code[i].isLetter || code[i].isNumber || code[i] == "_") {
+                    i = code.index(after: i)
                 }
-                let decStr = String(codePart[decStart..<i])
-                result += "<span class=\"py-dec\">\(escape(decStr))</span>"
+                res += "<span class=\"py-dec\">\(AppDelegate.escapeHtml(String(code[start..<i])))</span>"
                 continue
             }
 
-            result += escape(String(c))
-            i = codePart.index(after: i)
+            res += AppDelegate.escapeHtml(String(c))
+            i = code.index(after: i)
         }
-
-        return result
+        return res
     }
 
     private static func findCommentIndex(in line: String) -> String.Index? {
-        var inSingleQuote = false
-        var inDoubleQuote = false
-        var escaped = false
-
+        var inSingle = false, inDouble = false, escaped = false
         for (idx, c) in line.enumerated() {
             let strIdx = line.index(line.startIndex, offsetBy: idx)
-            if escaped {
-                escaped = false
-                continue
-            }
-            if c == "\\" {
-                escaped = true
-                continue
-            }
-            if c == "'" && !inDoubleQuote {
-                inSingleQuote.toggle()
-                continue
-            }
-            if c == "\"" && !inSingleQuote {
-                inDoubleQuote.toggle()
-                continue
-            }
-            if c == "#" && !inSingleQuote && !inDoubleQuote {
-                return strIdx
-            }
+            if escaped { escaped = false; continue }
+            if c == "\\" { escaped = true; continue }
+            if c == "'" && !inDouble { inSingle.toggle(); continue }
+            if c == "\"" && !inSingle { inDouble.toggle(); continue }
+            if c == "#" && !inSingle && !inDouble { return strIdx }
         }
         return nil
-    }
-
-    private static func escape(_ str: String) -> String {
-        return str.replacingOccurrences(of: "&", with: "&amp;")
-                  .replacingOccurrences(of: "<", with: "&lt;")
-                  .replacingOccurrences(of: ">", with: "&gt;")
     }
 
     private static let keywords: Set<String> = [
@@ -1215,9 +1106,7 @@ struct PythonSyntaxHighlighter {
         "Optional", "List", "Dict", "Set", "Tuple", "Any", "Union", "Callable", "Iterable"
     ]
 
-    private static let specialConstants: Set<String> = [
-        "self", "cls", "True", "False", "None"
-    ]
+    private static let specialConstants: Set<String> = ["self", "cls", "True", "False", "None"]
 }
 
     func isDaylightTheme() -> Bool {
@@ -1225,552 +1114,123 @@ struct PythonSyntaxHighlighter {
     }
 
     func baseCSS() -> String {
-        if isDaylightTheme() {
-            return """
-            :root {
-                --bg: rgba(255, 255, 255, 0.96);
-                --card: rgba(255, 255, 255, 0.92);
-                --border: rgba(203, 213, 225, 0.8);
-                --accent: #0284c7;
-                --text: #0f172a;
-                --text-muted: #64748b;
-                --speech-bg: linear-gradient(135deg, rgba(240, 249, 255, 0.95) 0%, rgba(224, 242, 254, 0.65) 100%);
-                --speech-border: rgba(56, 189, 248, 0.5);
-                --speech-text: #0f172a;
-                --code-bg: #f8fafc;
-                --code-border: #e2e8f0;
-                --code-text: #0f172a;
-                --gold: #b45309;
-                --gold-bg: rgba(245, 158, 11, 0.12);
-                --gold-border: rgba(245, 158, 11, 0.4);
-                --rose: #b91c1c;
-                --rose-bg: rgba(239, 68, 68, 0.12);
-                --rose-border: rgba(239, 68, 68, 0.35);
-                --green: #047857;
-                --green-bg: rgba(16, 185, 129, 0.12);
-                --green-border: rgba(16, 185, 129, 0.4);
-                --shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
-                --header-border: rgba(0, 0, 0, 0.08);
-                --btn-bg: #ffffff;
-                --btn-border: #cbd5e1;
-                --btn-text: #475569;
-                --btn-hover-bg: #f1f5f9;
-                --btn-hover-text: #0f172a;
-                --hk-bg: #f1f5f9;
-                --hk-border: #cbd5e1;
-                --hk-text: #334155;
-            }
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-            body {
-                background: var(--bg);
-                color: var(--text);
-                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
-                font-size: 13.5px;
-                line-height: 1.55;
-                padding: 16px;
-                user-select: text;
-                -webkit-user-select: text;
-                overflow-x: hidden;
-                overflow-y: auto;
-                backdrop-filter: blur(28px) saturate(190%);
-                -webkit-backdrop-filter: blur(28px) saturate(190%);
-            }
-            ::-webkit-scrollbar { width: 6px; }
-            ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-            ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-            .drag-bar {
-                width: 100%;
-                height: 12px;
-                margin-top: -6px;
-                margin-bottom: 6px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                cursor: grab;
-                user-select: none;
-                -webkit-user-select: none;
-            }
-            .drag-handle {
-                width: 38px;
-                height: 4px;
-                border-radius: 2px;
-                background: var(--text-muted);
-                opacity: 0.35;
-                transition: all 0.15s ease;
-            }
-            .drag-bar:hover .drag-handle {
-                opacity: 0.9;
-                background: var(--accent);
-                width: 52px;
-            }
-            .header {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding-bottom: 12px;
-                border-bottom: 1px solid var(--header-border);
-                margin-bottom: 14px;
-                cursor: grab;
-                user-select: none;
-                -webkit-user-select: none;
-            }
-            .header:active {
-                cursor: grabbing;
-            }
-            .brand {
-                font-weight: 800;
-                font-size: 11px;
-                letter-spacing: 1.2px;
-                color: var(--accent);
-                text-transform: uppercase;
-                -webkit-app-region: drag;
-            }
-            .mode-badge {
-                font-size: 10px;
-                font-weight: 700;
-                padding: 3px 8px;
-                border-radius: 6px;
-                background: rgba(14, 165, 233, 0.12);
-                border: 1px solid rgba(14, 165, 233, 0.35);
-                color: var(--accent);
-                letter-spacing: 0.5px;
-                -webkit-app-region: drag;
-            }
-            .pill {
-                font-size: 10px;
-                font-weight: 700;
-                padding: 3px 8px;
-                border-radius: 6px;
-                display: inline-flex;
-                align-items: center;
-                gap: 4px;
-                -webkit-app-region: no-drag;
-            }
-            .pill-ready { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
-            .pill-rec { background: var(--rose-bg); color: var(--rose); border: 1px solid var(--rose-border); animation: pulse 1.2s infinite; }
-            .pill-solve { background: var(--gold-bg); color: var(--gold); border: 1px solid var(--gold-border); animation: pulse 1.2s infinite; }
-            .pill-latency { background: rgba(14, 165, 233, 0.12); color: var(--accent); border: 1px solid rgba(14, 165, 233, 0.35); }
-            @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1.0; } 100% { opacity: 0.6; } }
+        let isDaylight = isDaylightTheme()
+        let rootVars = isDaylight ? """
+            --bg: rgba(255, 255, 255, 0.96); --card: rgba(255, 255, 255, 0.92); --border: rgba(203, 213, 225, 0.8);
+            --accent: #0284c7; --text: #0f172a; --text-muted: #64748b;
+            --speech-bg: linear-gradient(135deg, rgba(240, 249, 255, 0.95) 0%, rgba(224, 242, 254, 0.65) 100%);
+            --speech-border: rgba(56, 189, 248, 0.5); --speech-text: #0f172a;
+            --code-bg: #f8fafc; --code-border: #e2e8f0; --code-text: #0f172a;
+            --gold: #b45309; --gold-bg: rgba(245, 158, 11, 0.12); --gold-border: rgba(245, 158, 11, 0.4);
+            --rose: #b91c1c; --rose-bg: rgba(239, 68, 68, 0.12); --rose-border: rgba(239, 68, 68, 0.35);
+            --green: #047857; --green-bg: rgba(16, 185, 129, 0.12); --green-border: rgba(16, 185, 129, 0.4);
+            --shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+            --header-border: rgba(0, 0, 0, 0.08); --btn-bg: #ffffff; --btn-border: #cbd5e1; --btn-text: #475569;
+            --btn-hover-bg: #f1f5f9; --btn-hover-text: #0f172a; --hk-bg: #f1f5f9; --hk-border: #cbd5e1; --hk-text: #334155;
+            --scrollbar-thumb: #cbd5e1; --scrollbar-hover: #94a3b8; --line-hover-bg: rgba(14, 165, 233, 0.06);
+            --line-num-color: #94a3b8; --label-speech: #0284c7; --label-code: #7c3aed; --label-complexity: #059669;
+            --py-kw: #7c3aed; --py-fn: #0284c7; --py-class: #059669; --py-type: #0d9488; --py-const: #e11d48;
+            --py-str: #15803d; --py-num: #c2410c; --py-comment: #64748b; --py-call: #1d4ed8; --py-dec: #b45309;
+        """ : """
+            --bg: #070a12; --card: rgba(18, 24, 38, 0.85); --border: rgba(56, 189, 248, 0.25);
+            --accent: #38bdf8; --text: #f1f5f9; --text-muted: #94a3b8;
+            --speech-bg: rgba(56, 189, 248, 0.09); --speech-border: rgba(56, 189, 248, 0.35); --speech-text: #ffffff;
+            --code-bg: #0d121c; --code-border: #1e293b; --code-text: #7dd3fc;
+            --gold: #facc15; --gold-bg: rgba(250, 204, 21, 0.18); --gold-border: rgba(250, 204, 21, 0.4);
+            --rose: #fb7185; --rose-bg: rgba(251, 113, 133, 0.18); --rose-border: rgba(251, 113, 133, 0.4);
+            --green: #34d399; --green-bg: rgba(52, 211, 153, 0.15); --green-border: rgba(52, 211, 153, 0.3);
+            --shadow: none; --header-border: rgba(255, 255, 255, 0.08); --btn-bg: rgba(255, 255, 255, 0.08);
+            --btn-border: rgba(255, 255, 255, 0.15); --btn-text: #94a3b8; --btn-hover-bg: rgba(255, 255, 255, 0.15);
+            --btn-hover-text: #ffffff; --hk-bg: rgba(255, 255, 255, 0.06); --hk-border: rgba(255, 255, 255, 0.12);
+            --hk-text: #cbd5e1; --scrollbar-thumb: #1e293b; --scrollbar-hover: #334155;
+            --line-hover-bg: rgba(56, 189, 248, 0.08); --line-num-color: #64748b; --label-speech: #38bdf8;
+            --label-code: #a78bfa; --label-complexity: #34d399; --py-kw: #c084fc; --py-fn: #60a5fa;
+            --py-class: #34d399; --py-type: #2dd4bf; --py-const: #f43f5e; --py-str: #a3e635;
+            --py-num: #fb923c; --py-comment: #64748b; --py-call: #93c5fd; --py-dec: #facc15;
+        """
 
-            .card {
-                background: var(--card);
-                border: 1px solid var(--border);
-                border-radius: 10px;
-                padding: 14px 16px;
-                margin-bottom: 12px;
-                box-shadow: var(--shadow);
-            }
-            .speech-card {
-                background: var(--speech-bg);
-                border: 1px solid var(--speech-border);
-                border-radius: 10px;
-                padding: 14px 16px;
-                margin-bottom: 12px;
-                box-shadow: var(--shadow);
-            }
-            .card-label {
-                font-size: 10.5px;
-                font-weight: 800;
-                text-transform: uppercase;
-                letter-spacing: 0.8px;
-                margin-bottom: 8px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            }
-            .label-speech { color: #0284c7; }
-            .label-code { color: #7c3aed; }
-            .label-complexity { color: #059669; }
-            .speech-text {
-                font-size: 13.5px;
-                font-weight: 500;
-                color: var(--speech-text);
-                line-height: 1.6;
-            }
-            .speech-bullets {
-                list-style: none;
-                padding: 0;
-                margin: 0;
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-            }
-            .speech-bullets li {
-                position: relative;
-                padding-left: 20px;
-                font-size: 13.5px;
-                line-height: 1.55;
-                color: var(--speech-text);
-            }
-            .speech-bullets li::before {
-                content: "●";
-                position: absolute;
-                left: 2px;
-                top: 0px;
-                color: var(--accent);
-                font-size: 11px;
-            }
-            pre {
-                background: var(--code-bg);
-                border: 1px solid var(--code-border);
-                border-radius: 8px;
-                padding: 12px 14px;
-                overflow-x: auto;
-                font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
-                font-size: 12.5px;
-                line-height: 1.5;
-                color: var(--code-text);
-            }
-            .code-container {
-                background: var(--code-bg);
-                border: 1px solid var(--code-border);
-                border-radius: 8px;
-                padding: 10px 0;
-                overflow-x: auto;
-                font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
-                font-size: 12px;
-                line-height: 1.55;
-                color: var(--code-text);
-            }
-            .code-line {
-                display: flex;
-                align-items: baseline;
-                padding: 1px 12px;
-                min-height: 19px;
-            }
-            .code-line:hover {
-                background: rgba(14, 165, 233, 0.06);
-            }
-            .line-num {
-                min-width: 28px;
-                text-align: right;
-                padding-right: 14px;
-                color: #94a3b8;
-                user-select: none;
-                -webkit-user-select: none;
-                font-size: 10.5px;
-                font-family: 'SF Mono', Menlo, monospace;
-                opacity: 0.65;
-            }
-            .line-content {
-                flex: 1;
-                white-space: pre;
-                font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
-            }
-            .py-kw { color: #7c3aed; font-weight: 600; }
-            .py-fn { color: #0284c7; font-weight: 600; }
-            .py-class { color: #059669; font-weight: 700; }
-            .py-type { color: #0d9488; }
-            .py-const { color: #e11d48; font-style: italic; }
-            .py-str { color: #15803d; }
-            .py-num { color: #c2410c; }
-            .py-comment { color: #64748b; font-style: italic; }
-            .py-call { color: #1d4ed8; }
-            .py-dec { color: #b45309; font-weight: 600; }
-            .copy-btn {
-                background: var(--btn-bg);
-                border: 1px solid var(--btn-border);
-                color: var(--btn-text);
-                border-radius: 5px;
-                padding: 3px 9px;
-                font-size: 10px;
-                cursor: pointer;
-                font-weight: 600;
-                transition: all 0.15s ease;
-                -webkit-app-region: no-drag;
-            }
-            .copy-btn:hover { color: var(--btn-hover-text); background: var(--btn-hover-bg); }
-            .footer {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding-top: 10px;
-                border-top: 1px solid var(--header-border);
-                font-size: 10.5px;
-                color: var(--text-muted);
-                margin-top: 8px;
-            }
-            .hk {
-                background: var(--hk-bg);
-                border: 1px solid var(--hk-border);
-                border-radius: 4px;
-                padding: 1px 6px;
-                font-family: 'SF Mono', Menlo, monospace;
-                font-size: 9.5px;
-                color: var(--hk-text);
-                font-weight: 600;
-            }
-            """
-        } else {
-            return """
-            :root {
-                --bg: #070a12;
-                --card: rgba(18, 24, 38, 0.85);
-                --border: rgba(56, 189, 248, 0.25);
-                --accent: #38bdf8;
-                --text: #f1f5f9;
-                --text-muted: #94a3b8;
-                --speech-bg: rgba(56, 189, 248, 0.09);
-                --speech-border: rgba(56, 189, 248, 0.35);
-                --speech-text: #ffffff;
-                --code-bg: #0d121c;
-                --code-border: #1e293b;
-                --code-text: #7dd3fc;
-                --gold: #facc15;
-                --gold-bg: rgba(250, 204, 21, 0.18);
-                --gold-border: rgba(250, 204, 21, 0.4);
-                --rose: #fb7185;
-                --rose-bg: rgba(251, 113, 133, 0.18);
-                --rose-border: rgba(251, 113, 133, 0.4);
-                --green: #34d399;
-                --green-bg: rgba(52, 211, 153, 0.15);
-                --green-border: rgba(52, 211, 153, 0.3);
-                --shadow: none;
-                --header-border: rgba(255, 255, 255, 0.08);
-                --btn-bg: rgba(255, 255, 255, 0.08);
-                --btn-border: rgba(255, 255, 255, 0.15);
-                --btn-text: #94a3b8;
-                --btn-hover-bg: rgba(255, 255, 255, 0.15);
-                --btn-hover-text: #ffffff;
-                --hk-bg: rgba(255, 255, 255, 0.06);
-                --hk-border: rgba(255, 255, 255, 0.12);
-                --hk-text: #cbd5e1;
-            }
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-            body {
-                background: var(--bg);
-                color: var(--text);
-                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
-                font-size: 13.5px;
-                line-height: 1.55;
-                padding: 16px;
-                user-select: text;
-                -webkit-user-select: text;
-                overflow-x: hidden;
-                overflow-y: auto;
-            }
-            ::-webkit-scrollbar { width: 5px; }
-            ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-            .drag-bar {
-                width: 100%;
-                height: 12px;
-                margin-top: -6px;
-                margin-bottom: 6px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                cursor: grab;
-                user-select: none;
-                -webkit-user-select: none;
-            }
-            .drag-handle {
-                width: 38px;
-                height: 4px;
-                border-radius: 2px;
-                background: var(--text-muted);
-                opacity: 0.35;
-                transition: all 0.15s ease;
-            }
-            .drag-bar:hover .drag-handle {
-                opacity: 0.9;
-                background: var(--accent);
-                width: 52px;
-            }
-            .header {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding-bottom: 12px;
-                border-bottom: 1px solid var(--header-border);
-                margin-bottom: 14px;
-                cursor: grab;
-                user-select: none;
-                -webkit-user-select: none;
-            }
-            .header:active {
-                cursor: grabbing;
-            }
-            .brand {
-                font-weight: 800;
-                font-size: 11px;
-                letter-spacing: 1.2px;
-                color: var(--accent);
-                text-transform: uppercase;
-                -webkit-app-region: drag;
-            }
-            .mode-badge {
-                font-size: 10px;
-                font-weight: 700;
-                padding: 3px 8px;
-                border-radius: 6px;
-                background: rgba(56, 189, 248, 0.15);
-                border: 1px solid rgba(56, 189, 248, 0.35);
-                color: var(--accent);
-                letter-spacing: 0.5px;
-                -webkit-app-region: drag;
-            }
-            .pill {
-                font-size: 10px;
-                font-weight: 700;
-                padding: 3px 8px;
-                border-radius: 6px;
-                display: inline-flex;
-                align-items: center;
-                gap: 4px;
-                -webkit-app-region: no-drag;
-            }
-            .pill-ready { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
-            .pill-rec { background: var(--rose-bg); color: var(--rose); border: 1px solid var(--rose-border); animation: pulse 1.2s infinite; }
-            .pill-solve { background: var(--gold-bg); color: var(--gold); border: 1px solid var(--gold-border); animation: pulse 1.2s infinite; }
-            .pill-latency { background: rgba(56, 189, 248, 0.15); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.35); }
-            @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1.0; } 100% { opacity: 0.5; } }
+        return """
+        :root { \(rootVars) }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; font-size: 13.5px; line-height: 1.55; padding: 16px; user-select: text; -webkit-user-select: text; overflow-x: hidden; overflow-y: auto; backdrop-filter: blur(28px) saturate(190%); -webkit-backdrop-filter: blur(28px) saturate(190%); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+        .drag-bar { width: 100%; height: 12px; margin-top: -6px; margin-bottom: 6px; display: flex; align-items: center; justify-content: center; cursor: grab; user-select: none; -webkit-user-select: none; }
+        .drag-handle { width: 38px; height: 4px; border-radius: 2px; background: var(--text-muted); opacity: 0.35; transition: all 0.15s ease; }
+        .drag-bar:hover .drag-handle { opacity: 0.9; background: var(--accent); width: 52px; }
+        .header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid var(--header-border); margin-bottom: 14px; cursor: grab; user-select: none; -webkit-user-select: none; }
+        .header:active { cursor: grabbing; }
+        .brand { font-weight: 800; font-size: 11px; letter-spacing: 1.2px; color: var(--accent); text-transform: uppercase; -webkit-app-region: drag; }
+        .mode-badge { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: rgba(14, 165, 233, 0.12); border: 1px solid rgba(14, 165, 233, 0.35); color: var(--accent); letter-spacing: 0.5px; -webkit-app-region: drag; }
+        .pill { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; -webkit-app-region: no-drag; }
+        .pill-ready { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+        .pill-rec { background: var(--rose-bg); color: var(--rose); border: 1px solid var(--rose-border); animation: pulse 1.2s infinite; }
+        .pill-solve { background: var(--gold-bg); color: var(--gold); border: 1px solid var(--gold-border); animation: pulse 1.2s infinite; }
+        .pill-latency { background: rgba(14, 165, 233, 0.12); color: var(--accent); border: 1px solid rgba(14, 165, 233, 0.35); }
+        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1.0; } 100% { opacity: 0.6; } }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; box-shadow: var(--shadow); }
+        .speech-card { background: var(--speech-bg); border: 1px solid var(--speech-border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; box-shadow: var(--shadow); }
+        .card-label { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+        .label-speech { color: var(--label-speech); }
+        .label-code { color: var(--label-code); }
+        .label-complexity { color: var(--label-complexity); }
+        .speech-text { font-size: 13.5px; font-weight: 500; color: var(--speech-text); line-height: 1.6; }
+        .speech-bullets { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+        .speech-bullets li { position: relative; padding-left: 20px; font-size: 13.5px; line-height: 1.55; color: var(--speech-text); }
+        .speech-bullets li::before { content: "●"; position: absolute; left: 2px; top: 0px; color: var(--accent); font-size: 11px; }
+        pre { background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace; font-size: 12.5px; line-height: 1.5; color: var(--code-text); }
+        .code-container { background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 8px; padding: 10px 0; overflow-x: auto; font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.55; color: var(--code-text); }
+        .code-line { display: flex; align-items: baseline; padding: 1px 12px; min-height: 19px; }
+        .code-line:hover { background: var(--line-hover-bg); }
+        .line-num { min-width: 28px; text-align: right; padding-right: 14px; color: var(--line-num-color); user-select: none; -webkit-user-select: none; font-size: 10.5px; font-family: 'SF Mono', Menlo, monospace; opacity: 0.65; }
+        .line-content { flex: 1; white-space: pre; font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace; }
+        .py-kw { color: var(--py-kw); font-weight: 600; }
+        .py-fn { color: var(--py-fn); font-weight: 600; }
+        .py-class { color: var(--py-class); font-weight: 700; }
+        .py-type { color: var(--py-type); }
+        .py-const { color: var(--py-const); font-style: italic; }
+        .py-str { color: var(--py-str); }
+        .py-num { color: var(--py-num); }
+        .py-comment { color: var(--py-comment); font-style: italic; }
+        .py-call { color: var(--py-call); }
+        .py-dec { color: var(--py-dec); font-weight: 600; }
+        .copy-btn { background: var(--btn-bg); border: 1px solid var(--btn-border); color: var(--btn-text); border-radius: 5px; padding: 3px 9px; font-size: 10px; cursor: pointer; font-weight: 600; transition: all 0.15s ease; -webkit-app-region: no-drag; }
+        .copy-btn:hover { color: var(--btn-hover-text); background: var(--btn-hover-bg); }
+        .footer { display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid var(--header-border); font-size: 10.5px; color: var(--text-muted); margin-top: 8px; }
+        .hk { background: var(--hk-bg); border: 1px solid var(--hk-border); border-radius: 4px; padding: 1px 6px; font-family: 'SF Mono', Menlo, monospace; font-size: 9.5px; color: var(--hk-text); font-weight: 600; }
+        """
+    }
 
-            .card {
-                background: var(--card);
-                border: 1px solid var(--border);
-                border-radius: 10px;
-                padding: 14px 16px;
-                margin-bottom: 12px;
-            }
-            .speech-card {
-                background: var(--speech-bg);
-                border: 1px solid var(--speech-border);
-                border-radius: 10px;
-                padding: 14px 16px;
-                margin-bottom: 12px;
-            }
-            .card-label {
-                font-size: 10.5px;
-                font-weight: 800;
-                text-transform: uppercase;
-                letter-spacing: 0.8px;
-                margin-bottom: 8px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            }
-            .label-speech { color: #38bdf8; }
-            .label-code { color: #a78bfa; }
-            .label-complexity { color: #34d399; }
-            .speech-text {
-                font-size: 13.5px;
-                font-weight: 500;
-                color: var(--speech-text);
-                line-height: 1.6;
-            }
-            .speech-bullets {
-                list-style: none;
-                padding: 0;
-                margin: 0;
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-            }
-            .speech-bullets li {
-                position: relative;
-                padding-left: 20px;
-                font-size: 13.5px;
-                line-height: 1.55;
-                color: var(--speech-text);
-            }
-            .speech-bullets li::before {
-                content: "●";
-                position: absolute;
-                left: 2px;
-                top: 0px;
-                color: var(--accent);
-                font-size: 11px;
-            }
-            pre {
-                background: var(--code-bg);
-                border: 1px solid var(--code-border);
-                border-radius: 8px;
-                padding: 12px 14px;
-                overflow-x: auto;
-                font-family: 'SF Mono', Menlo, Monaco, monospace;
-                font-size: 12.5px;
-                line-height: 1.5;
-                color: var(--code-text);
-            }
-            .code-container {
-                background: var(--code-bg);
-                border: 1px solid var(--code-border);
-                border-radius: 8px;
-                padding: 10px 0;
-                overflow-x: auto;
-                font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
-                font-size: 12px;
-                line-height: 1.55;
-                color: var(--code-text);
-            }
-            .code-line {
-                display: flex;
-                align-items: baseline;
-                padding: 1px 12px;
-                min-height: 19px;
-            }
-            .code-line:hover {
-                background: rgba(56, 189, 248, 0.08);
-            }
-            .line-num {
-                min-width: 28px;
-                text-align: right;
-                padding-right: 14px;
-                color: #475569;
-                user-select: none;
-                -webkit-user-select: none;
-                font-size: 10.5px;
-                font-family: 'SF Mono', Menlo, monospace;
-                opacity: 0.65;
-            }
-            .line-content {
-                flex: 1;
-                white-space: pre;
-                font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
-            }
-            .py-kw { color: #c084fc; font-weight: 600; }
-            .py-fn { color: #60a5fa; font-weight: 600; }
-            .py-class { color: #34d399; font-weight: 700; }
-            .py-type { color: #2dd4bf; }
-            .py-const { color: #f43f5e; font-style: italic; }
-            .py-str { color: #a3e635; }
-            .py-num { color: #fb923c; }
-            .py-comment { color: #64748b; font-style: italic; }
-            .py-call { color: #93c5fd; }
-            .py-dec { color: #facc15; font-weight: 600; }
-            .copy-btn {
-                background: var(--btn-bg);
-                border: 1px solid var(--btn-border);
-                color: var(--btn-text);
-                border-radius: 4px;
-                padding: 2px 7px;
-                font-size: 9.5px;
-                cursor: pointer;
-                font-weight: 600;
-                -webkit-app-region: no-drag;
-            }
-            .copy-btn:hover { color: var(--btn-hover-text); background: var(--btn-hover-bg); }
-            .footer {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding-top: 10px;
-                border-top: 1px solid var(--header-border);
-                font-size: 10px;
-                color: var(--text-muted);
-                margin-top: 8px;
-            }
-            .hk {
-                background: var(--hk-bg);
-                border: 1px solid var(--hk-border);
-                border-radius: 4px;
-                padding: 1px 5px;
-                font-family: 'SF Mono', monospace;
-                font-size: 9.5px;
-                color: var(--hk-text);
-            }
-            """
-        }
+    func renderHUD(
+        badge: String,
+        pillHtml: String = "",
+        body: String,
+        footerLeft: String = "",
+        footerRight: String = "",
+        scripts: String = ""
+    ) {
+        let footerHtml = (!footerLeft.isEmpty || !footerRight.isEmpty) ? """
+        <div class="footer">
+            <span>\(footerLeft)</span>
+            <span>\(footerRight)</span>
+        </div>
+        """ : ""
+
+        let html = """
+        <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
+        <div class="drag-bar"><div class="drag-handle"></div></div>
+        <div class="header">
+            <div class="brand">SPATIAL HUD</div>
+            <div class="mode-badge">\(badge)</div>
+            \(pillHtml)
+        </div>
+        \(body)
+        \(footerHtml)
+        \(scripts)
+        </body></html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
     }
 
     func renderIdleHUD() {
@@ -1780,14 +1240,7 @@ struct PythonSyntaxHighlighter {
         let modelBadge = "\(preferredModel) • \(thinkingLabel)"
         let themeBadge = isDaylightTheme() ? "☀️ Daylight" : "🌙 Night"
 
-        let html = """
-        <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
-        <div class="drag-bar"><div class="drag-handle"></div></div>
-        <div class="header">
-            <div class="brand">SPATIAL HUD</div>
-            <div class="mode-badge">\(currentMode.tag)</div>
-            <div class="pill pill-ready">● READY</div>
-        </div>
+        let body = """
         <div class="card" style="text-align: center; padding: 28px 16px;">
             <div style="font-size: 28px; margin-bottom: 8px;">🚀</div>
             <div style="font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 6px;">Direct Gemini REST Engine Online</div>
@@ -1813,24 +1266,18 @@ struct PythonSyntaxHighlighter {
                 <li><span class="hk">Trackpad Scroll</span> : Two-finger scroll content</li>
             </ul>
         </div>
-        <div class="footer">
-            <span>SpatialHUD Compositor (sharingType: none)</span>
-            <span><span class="hk">Opt + O</span> Quit</span>
-        </div>
-        </body></html>
         """
-        webView.loadHTMLString(html, baseURL: nil)
+        renderHUD(
+            badge: currentMode.tag,
+            pillHtml: "<div class=\"pill pill-ready\">● READY</div>",
+            body: body,
+            footerLeft: "SpatialHUD Compositor (sharingType: none)",
+            footerRight: "<span class=\"hk\">Opt + O</span> Quit"
+        )
     }
 
     func renderRecordingHUD() {
-        let html = """
-        <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
-        <div class="drag-bar"><div class="drag-handle"></div></div>
-        <div class="header">
-            <div class="brand">SPATIAL HUD</div>
-            <div class="mode-badge">\(currentMode.tag)</div>
-            <div class="pill pill-rec">🎙️ RECORDING...</div>
-        </div>
+        let body = """
         <div class="card" style="padding: 24px 16px; border-color: var(--rose-border); background: var(--rose-bg);">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
                 <span style="font-size: 24px;">🎙️</span>
@@ -1843,24 +1290,18 @@ struct PythonSyntaxHighlighter {
                 Press <span class="hk">Opt + Return</span> when the interviewer finishes speaking to solve.
             </div>
         </div>
-        <div class="footer">
-            <span>5s pre-roll circular buffer engaged</span>
-            <span><span class="hk">Opt + Return</span> Stop & Solve</span>
-        </div>
-        </body></html>
         """
-        webView.loadHTMLString(html, baseURL: nil)
+        renderHUD(
+            badge: currentMode.tag,
+            pillHtml: "<div class=\"pill pill-rec\">🎙️ RECORDING...</div>",
+            body: body,
+            footerLeft: "5s pre-roll circular buffer engaged",
+            footerRight: "<span class=\"hk\">Opt + Return</span> Stop & Solve"
+        )
     }
 
     func renderSolvingHUD() {
-        let html = """
-        <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
-        <div class="drag-bar"><div class="drag-handle"></div></div>
-        <div class="header">
-            <div class="brand">SPATIAL HUD</div>
-            <div class="mode-badge">\(currentMode.tag)</div>
-            <div class="pill pill-solve">⚡ SOLVING...</div>
-        </div>
+        let body = """
         <div class="card" style="padding: 24px 16px; border-color: var(--gold-border); background: var(--gold-bg);">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
                 <span style="font-size: 24px;">⚡</span>
@@ -1875,25 +1316,23 @@ struct PythonSyntaxHighlighter {
                 <div>● Streaming tokens via direct HTTPS SSE stream...</div>
             </div>
         </div>
-        </body></html>
         """
-        webView.loadHTMLString(html, baseURL: nil)
+        renderHUD(
+            badge: currentMode.tag,
+            pillHtml: "<div class=\"pill pill-solve\">⚡ SOLVING...</div>",
+            body: body
+        )
     }
 
     func renderStreamingHUDHeader() {
         let roundLabel = solveCount > 0 ? "Follow-Up #\(solveCount)" : "Initial Problem"
-        let html = """
-        <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
-        <div class="drag-bar"><div class="drag-handle"></div></div>
-        <div class="header">
-            <div class="brand">SPATIAL HUD</div>
-            <div class="mode-badge">\(currentMode.tag) • \(roundLabel)</div>
-            <div class="pill pill-solve">⚡ STREAMING...</div>
-        </div>
+        let body = """
         <div class="card" style="margin-bottom: 12px;">
             <div class="card-label label-speech"><span>LIVE STREAMING SOLUTION</span></div>
             <div id="stream-content" style="font-family: 'SF Mono', Menlo, monospace; font-size: 12.5px; line-height: 1.5; color: var(--code-text); white-space: pre-wrap; word-break: break-word;"></div>
         </div>
+        """
+        let scripts = """
         <script>
             function appendText(chunk) {
                 const el = document.getElementById('stream-content');
@@ -1903,9 +1342,13 @@ struct PythonSyntaxHighlighter {
                 }
             }
         </script>
-        </body></html>
         """
-        webView.loadHTMLString(html, baseURL: nil)
+        renderHUD(
+            badge: "\(currentMode.tag) • \(roundLabel)",
+            pillHtml: "<div class=\"pill pill-solve\">⚡ STREAMING...</div>",
+            body: body,
+            scripts: scripts
+        )
     }
 
     func appendStreamChunk(_ chunk: String) {
@@ -1921,9 +1364,7 @@ struct PythonSyntaxHighlighter {
 
         let speechHtml = speech.isEmpty ? "" : """
         <div class="speech-card">
-            <div class="card-label label-speech">
-                <span>🗣️ Thought Out Loud</span>
-            </div>
+            <div class="card-label label-speech"><span>🗣️ Thought Out Loud</span></div>
             <div class="speech-text">\(formatSpeechParagraphHTML(speech))</div>
         </div>
         """
@@ -1947,27 +1388,12 @@ struct PythonSyntaxHighlighter {
 
         let complexityHtml = complexity.isEmpty ? "" : """
         <div class="card" style="padding: 10px 14px; background: var(--green-bg); border-color: var(--green-border);">
-            <div class="card-label label-complexity" style="margin-bottom: 4px;">
-                <span>⏱️ TIME & SPACE COMPLEXITY</span>
-            </div>
+            <div class="card-label label-complexity" style="margin-bottom: 4px;"><span>⏱️ TIME & SPACE COMPLEXITY</span></div>
             <div style="font-size: 12.5px; color: var(--text);">\(escapeHtml(complexity))</div>
         </div>
         """
 
-        let html = """
-        <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
-        <div class="drag-bar"><div class="drag-handle"></div></div>
-        <div class="header">
-            <div class="brand">SPATIAL HUD</div>
-            <div class="mode-badge">\(currentMode.tag) • \(roundLabel)</div>
-        </div>
-        \(speechHtml)
-        \(codeHtml)
-        \(complexityHtml)
-        <div class="footer">
-            <span>\(modelName)</span>
-            <span><span class="hk">Opt+Down/Up</span> Scroll • <span class="hk">Opt+Left/Right</span> Move • <span class="hk">Opt+[/]</span> Resize</span>
-        </div>
+        let scripts = """
         <script>
             window.__rawPythonCode = \(rawCodeJson)[0];
             function copyCode() {
@@ -1981,31 +1407,31 @@ struct PythonSyntaxHighlighter {
                 if (btn) { btn.innerText = 'Copied!'; setTimeout(() => { btn.innerText = 'Copy Code'; }, 1500); }
             }
         </script>
-        </body></html>
         """
-        webView.loadHTMLString(html, baseURL: nil)
+
+        renderHUD(
+            badge: "\(currentMode.tag) • \(roundLabel)",
+            body: "\(speechHtml)\n\(codeHtml)\n\(complexityHtml)",
+            footerLeft: modelName,
+            footerRight: "<span class=\"hk\">Opt+Down/Up</span> Scroll • <span class=\"hk\">Opt+Left/Right</span> Move • <span class=\"hk\">Opt+[/]</span> Resize",
+            scripts: scripts
+        )
     }
 
     func renderErrorHUD(_ errorMsg: String) {
-        let html = """
-        <!DOCTYPE html><html><head><meta charset="utf-8"><style>\(baseCSS())</style></head><body>
-        <div class="drag-bar"><div class="drag-handle"></div></div>
-        <div class="header">
-            <div class="brand">SPATIAL HUD</div>
-            <div class="mode-badge">\(currentMode.tag)</div>
-            <div class="pill" style="background: var(--rose-bg); color: var(--rose); border: 1px solid var(--rose-border);">❌ ERROR</div>
-        </div>
+        let body = """
         <div class="card" style="border-color: var(--rose-border); padding: 18px;">
             <div style="font-size: 13.5px; font-weight: 700; color: var(--rose); margin-bottom: 8px;">Inference Failed</div>
             <div style="font-size: 12px; color: var(--text); font-family: 'SF Mono', monospace; line-height: 1.5;">\(escapeHtml(errorMsg))</div>
         </div>
-        <div class="footer">
-            <span>Check ~/.config/overlay/gemini_api_key.txt</span>
-            <span><span class="hk">Opt + R</span> Reset</span>
-        </div>
-        </body></html>
         """
-        webView.loadHTMLString(html, baseURL: nil)
+        renderHUD(
+            badge: currentMode.tag,
+            pillHtml: "<div class=\"pill\" style=\"background: var(--rose-bg); color: var(--rose); border: 1px solid var(--rose-border);\">❌ ERROR</div>",
+            body: body,
+            footerLeft: "Check ~/.config/overlay/gemini_api_key.txt",
+            footerRight: "<span class=\"hk\">Opt + R</span> Reset"
+        )
     }
 
     func parseSections(raw: String) -> (speech: String, code: String, complexity: String) {
@@ -2059,12 +1485,16 @@ struct PythonSyntaxHighlighter {
         return (speech, cleanCode, complexity)
     }
 
-    func escapeHtml(_ str: String) -> String {
+    static func escapeHtml(_ str: String) -> String {
         return str.replacingOccurrences(of: "&", with: "&amp;")
                   .replacingOccurrences(of: "<", with: "&lt;")
                   .replacingOccurrences(of: ">", with: "&gt;")
                   .replacingOccurrences(of: "\"", with: "&quot;")
                   .replacingOccurrences(of: "'", with: "&#39;")
+    }
+
+    func escapeHtml(_ str: String) -> String {
+        return AppDelegate.escapeHtml(str)
     }
 
     func formatSpeechParagraphHTML(_ rawSpeech: String) -> String {
@@ -2166,34 +1596,11 @@ struct PythonSyntaxHighlighter {
         // Option + 7           : Snap Top-Left Corner
         // Option + 8           : Snap Top-Right Corner
         let binds: [(UInt32, Int)] = [
-            (1, kVK_ANSI_S),
-            (2, kVK_Return),
-            (3, kVK_ANSI_1),
-            (4, kVK_ANSI_2),
-            (5, kVK_ANSI_3),
-            (6, kVK_ANSI_4),
-            (7, kVK_ANSI_O),
-            (8, kVK_ANSI_Z),
-            (9, kVK_ANSI_I),
-            (10, kVK_ANSI_R),
-            (11, kVK_DownArrow),
-            (12, kVK_UpArrow),
-            (13, kVK_ANSI_LeftBracket),
-            (14, kVK_ANSI_RightBracket),
-            (15, kVK_ANSI_Minus),
-            (16, kVK_ANSI_Equal),
-            (17, kVK_LeftArrow),
-            (18, kVK_RightArrow),
-            (19, kVK_ANSI_H),
-            (20, kVK_ANSI_L),
-            (21, kVK_ANSI_K),
-            (22, kVK_ANSI_J),
-            (23, kVK_ANSI_U),
-            (24, kVK_ANSI_D),
-            (25, kVK_ANSI_5),
-            (26, kVK_ANSI_6),
-            (27, kVK_ANSI_7),
-            (28, kVK_ANSI_8)
+            (1, kVK_ANSI_S), (2, kVK_Return), (3, kVK_ANSI_1), (4, kVK_ANSI_2), (5, kVK_ANSI_3), (6, kVK_ANSI_4),
+            (7, kVK_ANSI_O), (8, kVK_ANSI_Z), (9, kVK_ANSI_I), (10, kVK_ANSI_R), (11, kVK_DownArrow), (12, kVK_UpArrow),
+            (13, kVK_ANSI_LeftBracket), (14, kVK_ANSI_RightBracket), (15, kVK_ANSI_Minus), (16, kVK_ANSI_Equal),
+            (17, kVK_LeftArrow), (18, kVK_RightArrow), (19, kVK_ANSI_H), (20, kVK_ANSI_L), (21, kVK_ANSI_K), (22, kVK_ANSI_J),
+            (23, kVK_ANSI_U), (24, kVK_ANSI_D), (25, kVK_ANSI_5), (26, kVK_ANSI_6), (27, kVK_ANSI_7), (28, kVK_ANSI_8)
         ]
         for (id, code) in binds {
             var ref: EventHotKeyRef?
@@ -2205,12 +1612,10 @@ struct PythonSyntaxHighlighter {
             kVK_ANSI_A, kVK_ANSI_B, kVK_ANSI_C, kVK_ANSI_D, kVK_ANSI_E, kVK_ANSI_F, kVK_ANSI_G, kVK_ANSI_H,
             kVK_ANSI_I, kVK_ANSI_J, kVK_ANSI_K, kVK_ANSI_L, kVK_ANSI_M, kVK_ANSI_N, kVK_ANSI_O, kVK_ANSI_P,
             kVK_ANSI_Q, kVK_ANSI_R, kVK_ANSI_S, kVK_ANSI_T, kVK_ANSI_U, kVK_ANSI_V, kVK_ANSI_W, kVK_ANSI_X,
-            kVK_ANSI_Y, kVK_ANSI_Z,
-            kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7,
-            kVK_ANSI_8, kVK_ANSI_9,
-            kVK_ANSI_Equal, kVK_ANSI_Minus, kVK_ANSI_LeftBracket, kVK_ANSI_RightBracket,
-            kVK_ANSI_Semicolon, kVK_ANSI_Slash, kVK_ANSI_Quote, kVK_ANSI_Comma, kVK_ANSI_Period,
-            kVK_ANSI_Grave, kVK_ANSI_Backslash
+            kVK_ANSI_Y, kVK_ANSI_Z, kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4, kVK_ANSI_5,
+            kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9, kVK_ANSI_Equal, kVK_ANSI_Minus,
+            kVK_ANSI_LeftBracket, kVK_ANSI_RightBracket, kVK_ANSI_Semicolon, kVK_ANSI_Slash,
+            kVK_ANSI_Quote, kVK_ANSI_Comma, kVK_ANSI_Period, kVK_ANSI_Grave, kVK_ANSI_Backslash
         ]
         let activeSet = Set(binds.map { $0.1 })
         for code in allCandidateKeys where !activeSet.contains(code) {
@@ -2260,31 +1665,13 @@ struct PythonSyntaxHighlighter {
             if (!el) {
                 el = document.createElement('div');
                 el.id = 'hud-opacity-toast';
-                el.style.position = 'fixed';
-                el.style.bottom = '16px';
-                el.style.right = '16px';
-                el.style.background = 'rgba(15, 23, 42, 0.90)';
-                el.style.color = '#38bdf8';
-                el.style.border = '1px solid rgba(56, 189, 248, 0.4)';
-                el.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
-                el.style.padding = '5px 12px';
-                el.style.borderRadius = '6px';
-                el.style.fontSize = '11px';
-                el.style.fontWeight = '700';
-                el.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif";
-                el.style.zIndex = '99999';
-                el.style.pointerEvents = 'none';
-                el.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                el.style.cssText = 'position:fixed;bottom:16px;right:16px;background:rgba(15,23,42,0.9);color:#38bdf8;border:1px solid rgba(56,189,248,0.4);box-shadow:0 4px 12px rgba(0,0,0,0.15);padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;font-family:-apple-system,sans-serif;z-index:99999;pointer-events:none;transition:opacity 0.25s ease,transform 0.25s ease;';
                 document.body.appendChild(el);
             }
-            el.textContent = '🌓 HUD OPACITY: ' + \(pct) + '%';
-            el.style.opacity = '1';
-            el.style.transform = 'translateY(0)';
+            el.textContent = '🌓 HUD OPACITY: \(pct)%';
+            el.style.opacity = '1'; el.style.transform = 'translateY(0)';
             clearTimeout(window.__opacityToastTimer);
-            window.__opacityToastTimer = setTimeout(function() {
-                el.style.opacity = '0';
-                el.style.transform = 'translateY(6px)';
-            }, 1200);
+            window.__opacityToastTimer = setTimeout(function() { el.style.opacity = '0'; el.style.transform = 'translateY(6px)'; }, 1200);
         })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
@@ -2313,23 +1700,15 @@ struct PythonSyntaxHighlighter {
         panel.setFrame(f, display: true, animate: false)
     }
 
-    enum ScreenCorner {
-        case topLeft, topRight, bottomLeft, bottomRight
-    }
-
+    enum ScreenCorner { case topLeft, topRight, bottomLeft, bottomRight }
     func snapToCorner(_ corner: ScreenCorner) {
         guard let s = NSScreen.main?.visibleFrame else { return }
-        var f = panel.frame
-        let margin: CGFloat = 20
+        var f = panel.frame; let m: CGFloat = 20
         switch corner {
-        case .topLeft:
-            f.origin = CGPoint(x: s.minX + margin, y: s.maxY - f.height - margin)
-        case .topRight:
-            f.origin = CGPoint(x: s.maxX - f.width - margin, y: s.maxY - f.height - margin)
-        case .bottomLeft:
-            f.origin = CGPoint(x: s.minX + margin, y: s.minY + margin)
-        case .bottomRight:
-            f.origin = CGPoint(x: s.maxX - f.width - margin, y: s.minY + margin)
+        case .topLeft:     f.origin = CGPoint(x: s.minX + m, y: s.maxY - f.height - m)
+        case .topRight:    f.origin = CGPoint(x: s.maxX - f.width - m, y: s.maxY - f.height - m)
+        case .bottomLeft:  f.origin = CGPoint(x: s.minX + m, y: s.minY + m)
+        case .bottomRight: f.origin = CGPoint(x: s.maxX - f.width - m, y: s.minY + m)
         }
         panel.setFrame(f, display: true, animate: false)
     }
