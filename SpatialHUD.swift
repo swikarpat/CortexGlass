@@ -656,15 +656,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 \(screenContext)
 
                 CRITICAL INSTRUCTION FOR "THOUGHT OUT LOUD":
-                Strictly 2 to 3 concise, punchy sentences. Maximum 45 words total.
-                - Sentence 1: Directly address the follow-up or constraint and state the exact algorithmic adaptation (e.g. "We can optimize this to O(n) using a two-pointer approach...").
-                - Sentence 2: Note the specific complexity impact or edge case handled.
-                - Sentence 3: 1 short collaborative check-in (e.g. "I can quickly patch this helper function; how does that look to you?").
-                ABSOLUTELY NO ESSAY, NO LENGTHY EXPLANATIONS, NO BULLETS. Keep it natural to speak aloud in 10 seconds.
+                Provide a clean, conversational verbal script addressing the interviewer's follow-up.
+                Strictly 3 to 4 concise, substantive sentences (approx 60 to 75 words total).
+                - Sentence 1: Acknowledge the interviewer's new constraint, scale, or edge-case query directly.
+                - Sentence 2: Explain the optimal algorithmic adaptation and how it preserves target complexity.
+                - Sentence 3: Clarify the exact code adjustment or patch needed without rewriting existing working logic.
+                - Sentence 4: 1 brief collaborative check-in (e.g. "I can make this specific amendment right here in the helper function; how does that look to you?").
+                Write in clean first-person ("I"). NO essay, NO bullet walls.
 
                 OUTPUT FORMAT EXACTLY AS FOLLOWS:
                 ### 1. THOUGHT OUT LOUD
-                (2 to 3 concise sentences under 45 words)
+                (3 to 4 concise sentences, approx 60-75 words. Adaptation, complexity, patch outline, and check-in.)
 
                 ### 2. PYTHON IMPLEMENTATION
                 ```python
@@ -685,15 +687,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 \(screenContext)
 
                 CRITICAL INSTRUCTION FOR "THOUGHT OUT LOUD":
-                Strictly 2 to 3 concise, punchy sentences. Maximum 45 words total.
-                - Sentence 1: State the optimal algorithmic approach and core data structure (e.g. "I'll solve this in O(n) time using a hash map to track complements in a single pass.").
-                - Sentence 2: State why this is optimal vs brute force or note key edge case.
-                - Sentence 3: 1 short collaborative check-in question (e.g. "Does this approach sound good to you before I write the code?").
-                ABSOLUTELY NO ESSAY, NO LENGTHY EXPLANATIONS, NO BULLETS. Keep it natural to speak aloud in 10 seconds.
+                Provide a clean, conversational verbal walkthrough for the candidate to speak aloud.
+                Strictly 4 to 5 concise, substantive sentences (approx 75 to 95 words total).
+                Structure it across 4 clear points:
+                - Sentence 1: State the problem understanding, chosen optimal algorithmic approach (e.g. binary search on partition, two pointers, monotonic stack, hash map), and target Big-O runtime/space.
+                - Sentence 2-3: Explain the core algorithmic mechanism and why this data structure solves the problem efficiently.
+                - Sentence 4: Explicitly mention handling of key edge cases (bounds, duplicates, empty inputs, or extremes).
+                - Sentence 5: 1 brief collaborative check-in question (e.g. "Does this approach look solid to you before I jump into implementing?").
+                Write in clean, natural first-person ("I"). NO long bullet lists, NO massive essay walls. Keep it easy to glance at and recite naturally in ~20 seconds.
 
                 OUTPUT FORMAT EXACTLY AS FOLLOWS:
                 ### 1. THOUGHT OUT LOUD
-                (2 to 3 concise sentences under 45 words)
+                (4 to 5 concise sentences, approx 75-95 words. Strategy, mechanism, edge case, and check-in.)
 
                 ### 2. PYTHON IMPLEMENTATION
                 ```python
@@ -958,6 +963,262 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         return true // Daylight mode
     }
 
+// ========================================================================
+// 8.5 IDE-Grade Python Syntax Highlighting Engine
+// ========================================================================
+struct PythonSyntaxHighlighter {
+    static func highlight(code: String) -> String {
+        let lines = code.components(separatedBy: "\n")
+        var formattedLines: [String] = []
+        var multiLineDelimiter: String? = nil
+
+        for (idx, rawLine) in lines.enumerated() {
+            let lineNum = idx + 1
+            let (highlighted, nextDelimiter) = highlightLine(rawLine, inDelimiter: multiLineDelimiter)
+            multiLineDelimiter = nextDelimiter
+            let lineHtml = "<div class=\"code-line\"><span class=\"line-num\">\(lineNum)</span><span class=\"line-content\">\(highlighted)</span></div>"
+            formattedLines.append(lineHtml)
+        }
+
+        return formattedLines.joined(separator: "\n")
+    }
+
+    private static func highlightLine(_ line: String, inDelimiter: String?) -> (String, String?) {
+        if let delim = inDelimiter {
+            if let closeRange = line.range(of: delim) {
+                let strPart = String(line[..<closeRange.upperBound])
+                let restPart = String(line[closeRange.upperBound...])
+                let highlightedRest = highlightCodePart(restPart)
+                return ("<span class=\"py-str\">\(escape(strPart))</span>" + highlightedRest, nil)
+            } else {
+                return ("<span class=\"py-str\">\(escape(line))</span>", delim)
+            }
+        }
+
+        let d3 = "\"\"\""
+        let s3 = "'''"
+        var activeDelim: String? = nil
+        var firstDelimRange: Range<String.Index>? = nil
+
+        if let r1 = line.range(of: d3), let r2 = line.range(of: s3) {
+            if r1.lowerBound < r2.lowerBound {
+                firstDelimRange = r1; activeDelim = d3
+            } else {
+                firstDelimRange = r2; activeDelim = s3
+            }
+        } else if let r1 = line.range(of: d3) {
+            firstDelimRange = r1; activeDelim = d3
+        } else if let r2 = line.range(of: s3) {
+            firstDelimRange = r2; activeDelim = s3
+        }
+
+        if let delim = activeDelim, let range = firstDelimRange {
+            if let cIdx = findCommentIndex(in: line), cIdx < range.lowerBound {
+                return (highlightCodeWithComment(line), nil)
+            }
+            let before = String(line[..<range.lowerBound])
+            let afterStart = line[range.upperBound...]
+            if let closeRange = afterStart.range(of: delim) {
+                let fullStr = String(line[range.lowerBound...closeRange.upperBound])
+                let rest = String(line[closeRange.upperBound...])
+                let res = highlightCodePart(before) + "<span class=\"py-str\">\(escape(fullStr))</span>" + highlightCodePart(rest)
+                return (res, nil)
+            } else {
+                let strPart = String(line[range.lowerBound...])
+                let res = highlightCodePart(before) + "<span class=\"py-str\">\(escape(strPart))</span>"
+                return (res, delim)
+            }
+        }
+
+        return (highlightCodeWithComment(line), nil)
+    }
+
+    private static func highlightCodeWithComment(_ line: String) -> String {
+        if let commentIdx = findCommentIndex(in: line) {
+            let codePart = String(line[..<commentIdx])
+            let commentStr = String(line[commentIdx...])
+            return highlightCodePart(codePart) + "<span class=\"py-comment\">\(escape(commentStr))</span>"
+        }
+        return highlightCodePart(line)
+    }
+
+    private static func highlightCodePart(_ codePart: String) -> String {
+        var result = ""
+        var i = codePart.startIndex
+
+        while i < codePart.endIndex {
+            let c = codePart[i]
+
+            // Prefixed strings: f"...", r"...", b"..."
+            if (c == "f" || c == "F" || c == "r" || c == "R" || c == "b" || c == "B"),
+               let next = codePart.index(i, offsetBy: 1, limitedBy: codePart.endIndex),
+               next < codePart.endIndex && (codePart[next] == "\"" || codePart[next] == "'") {
+                let quote = codePart[next]
+                let strStart = i
+                i = codePart.index(after: next)
+                var escaped = false
+                while i < codePart.endIndex {
+                    let cur = codePart[i]
+                    if escaped {
+                        escaped = false
+                    } else if cur == "\\" {
+                        escaped = true
+                    } else if cur == quote {
+                        i = codePart.index(after: i)
+                        break
+                    }
+                    i = codePart.index(after: i)
+                }
+                let strLiteral = String(codePart[strStart..<i])
+                result += "<span class=\"py-str\">\(escape(strLiteral))</span>"
+                continue
+            }
+
+            // Standard strings: "..." or '...'
+            if c == "\"" || c == "'" {
+                let quote = c
+                let strStart = i
+                i = codePart.index(after: i)
+                var escaped = false
+                while i < codePart.endIndex {
+                    let cur = codePart[i]
+                    if escaped {
+                        escaped = false
+                    } else if cur == "\\" {
+                        escaped = true
+                    } else if cur == quote {
+                        i = codePart.index(after: i)
+                        break
+                    }
+                    i = codePart.index(after: i)
+                }
+                let strLiteral = String(codePart[strStart..<i])
+                result += "<span class=\"py-str\">\(escape(strLiteral))</span>"
+                continue
+            }
+
+            // Identifiers / Keywords
+            if c.isLetter || c == "_" {
+                let idStart = i
+                while i < codePart.endIndex && (codePart[i].isLetter || codePart[i].isNumber || codePart[i] == "_") {
+                    i = codePart.index(after: i)
+                }
+                let word = String(codePart[idStart..<i])
+
+                let prefix = codePart[..<idStart].trimmingCharacters(in: .whitespaces)
+                let isDef = prefix.hasSuffix("def")
+                let isClass = prefix.hasSuffix("class")
+
+                if isDef {
+                    result += "<span class=\"py-fn\">\(escape(word))</span>"
+                } else if isClass {
+                    result += "<span class=\"py-class\">\(escape(word))</span>"
+                } else if keywords.contains(word) {
+                    result += "<span class=\"py-kw\">\(escape(word))</span>"
+                } else if builtins.contains(word) {
+                    result += "<span class=\"py-type\">\(escape(word))</span>"
+                } else if specialConstants.contains(word) {
+                    result += "<span class=\"py-const\">\(escape(word))</span>"
+                } else {
+                    var nextIdx = i
+                    while nextIdx < codePart.endIndex && codePart[nextIdx].isWhitespace {
+                        nextIdx = codePart.index(after: nextIdx)
+                    }
+                    if nextIdx < codePart.endIndex && codePart[nextIdx] == "(" {
+                        result += "<span class=\"py-call\">\(escape(word))</span>"
+                    } else {
+                        result += escape(word)
+                    }
+                }
+                continue
+            }
+
+            // Numbers
+            if c.isNumber {
+                let numStart = i
+                while i < codePart.endIndex && (codePart[i].isNumber || codePart[i] == "." || codePart[i] == "_" || codePart[i] == "e" || codePart[i] == "E") {
+                    i = codePart.index(after: i)
+                }
+                let numStr = String(codePart[numStart..<i])
+                result += "<span class=\"py-num\">\(escape(numStr))</span>"
+                continue
+            }
+
+            // Decorators
+            if c == "@" {
+                let decStart = i
+                i = codePart.index(after: i)
+                while i < codePart.endIndex && (codePart[i].isLetter || codePart[i].isNumber || codePart[i] == "_") {
+                    i = codePart.index(after: i)
+                }
+                let decStr = String(codePart[decStart..<i])
+                result += "<span class=\"py-dec\">\(escape(decStr))</span>"
+                continue
+            }
+
+            result += escape(String(c))
+            i = codePart.index(after: i)
+        }
+
+        return result
+    }
+
+    private static func findCommentIndex(in line: String) -> String.Index? {
+        var inSingleQuote = false
+        var inDoubleQuote = false
+        var escaped = false
+
+        for (idx, c) in line.enumerated() {
+            let strIdx = line.index(line.startIndex, offsetBy: idx)
+            if escaped {
+                escaped = false
+                continue
+            }
+            if c == "\\" {
+                escaped = true
+                continue
+            }
+            if c == "'" && !inDoubleQuote {
+                inSingleQuote.toggle()
+                continue
+            }
+            if c == "\"" && !inSingleQuote {
+                inDoubleQuote.toggle()
+                continue
+            }
+            if c == "#" && !inSingleQuote && !inDoubleQuote {
+                return strIdx
+            }
+        }
+        return nil
+    }
+
+    private static func escape(_ str: String) -> String {
+        return str.replacingOccurrences(of: "&", with: "&amp;")
+                  .replacingOccurrences(of: "<", with: "&lt;")
+                  .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
+    private static let keywords: Set<String> = [
+        "def", "class", "return", "if", "elif", "else", "for", "while", "in", "is",
+        "not", "and", "or", "yield", "lambda", "try", "except", "finally", "with",
+        "as", "import", "from", "pass", "break", "continue", "raise", "async", "await",
+        "assert", "global", "nonlocal"
+    ]
+
+    private static let builtins: Set<String> = [
+        "int", "str", "float", "bool", "list", "dict", "set", "tuple",
+        "len", "range", "enumerate", "zip", "min", "max", "sum", "sorted",
+        "map", "filter", "any", "all", "print", "abs", "reversed", "iter", "next",
+        "super", "isinstance", "issubclass", "round", "pow", "divmod",
+        "Optional", "List", "Dict", "Set", "Tuple", "Any", "Union", "Callable", "Iterable"
+    ]
+
+    private static let specialConstants: Set<String> = [
+        "self", "cls", "True", "False", "None"
+    ]
+}
+
     func isDaylightTheme() -> Bool {
         return AppDelegate.isDaylightTheme()
     }
@@ -1136,6 +1397,52 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 line-height: 1.5;
                 color: var(--code-text);
             }
+            .code-container {
+                background: var(--code-bg);
+                border: 1px solid var(--code-border);
+                border-radius: 8px;
+                padding: 10px 0;
+                overflow-x: auto;
+                font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+                font-size: 12px;
+                line-height: 1.55;
+                color: var(--code-text);
+            }
+            .code-line {
+                display: flex;
+                align-items: baseline;
+                padding: 1px 12px;
+                min-height: 19px;
+            }
+            .code-line:hover {
+                background: rgba(14, 165, 233, 0.06);
+            }
+            .line-num {
+                min-width: 28px;
+                text-align: right;
+                padding-right: 14px;
+                color: #94a3b8;
+                user-select: none;
+                -webkit-user-select: none;
+                font-size: 10.5px;
+                font-family: 'SF Mono', Menlo, monospace;
+                opacity: 0.65;
+            }
+            .line-content {
+                flex: 1;
+                white-space: pre;
+                font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            }
+            .py-kw { color: #7c3aed; font-weight: 600; }
+            .py-fn { color: #0284c7; font-weight: 600; }
+            .py-class { color: #059669; font-weight: 700; }
+            .py-type { color: #0d9488; }
+            .py-const { color: #e11d48; font-style: italic; }
+            .py-str { color: #15803d; }
+            .py-num { color: #c2410c; }
+            .py-comment { color: #64748b; font-style: italic; }
+            .py-call { color: #1d4ed8; }
+            .py-dec { color: #b45309; font-weight: 600; }
             .copy-btn {
                 background: var(--btn-bg);
                 border: 1px solid var(--btn-border);
@@ -1338,6 +1645,52 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
                 line-height: 1.5;
                 color: var(--code-text);
             }
+            .code-container {
+                background: var(--code-bg);
+                border: 1px solid var(--code-border);
+                border-radius: 8px;
+                padding: 10px 0;
+                overflow-x: auto;
+                font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+                font-size: 12px;
+                line-height: 1.55;
+                color: var(--code-text);
+            }
+            .code-line {
+                display: flex;
+                align-items: baseline;
+                padding: 1px 12px;
+                min-height: 19px;
+            }
+            .code-line:hover {
+                background: rgba(56, 189, 248, 0.08);
+            }
+            .line-num {
+                min-width: 28px;
+                text-align: right;
+                padding-right: 14px;
+                color: #475569;
+                user-select: none;
+                -webkit-user-select: none;
+                font-size: 10.5px;
+                font-family: 'SF Mono', Menlo, monospace;
+                opacity: 0.65;
+            }
+            .line-content {
+                flex: 1;
+                white-space: pre;
+                font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            }
+            .py-kw { color: #c084fc; font-weight: 600; }
+            .py-fn { color: #60a5fa; font-weight: 600; }
+            .py-class { color: #34d399; font-weight: 700; }
+            .py-type { color: #2dd4bf; }
+            .py-const { color: #f43f5e; font-style: italic; }
+            .py-str { color: #a3e635; }
+            .py-num { color: #fb923c; }
+            .py-comment { color: #64748b; font-style: italic; }
+            .py-call { color: #93c5fd; }
+            .py-dec { color: #facc15; font-weight: 600; }
             .copy-btn {
                 background: var(--btn-bg);
                 border: 1px solid var(--btn-border);
@@ -1529,13 +1882,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
         </div>
         """
 
+        let highlightedCode = currentMode == .coding ? PythonSyntaxHighlighter.highlight(code: code) : escapeHtml(code)
+        let rawCodeJson = (try? JSONSerialization.data(withJSONObject: [code])).flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+        let codeSubBadge = currentMode == .coding ? "solution.py" : (currentMode == .systemDesign ? "architecture.txt" : "snippet.txt")
+
         let codeHtml = code.isEmpty ? "" : """
         <div class="card">
             <div class="card-label label-code">
-                <span>💻 Python Implementation</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span>💻 Python Implementation</span>
+                    <span style="font-size: 9.5px; opacity: 0.65; font-weight: 500; font-family: 'SF Mono', monospace;">\(codeSubBadge)</span>
+                </div>
                 <button class="copy-btn" onclick="copyCode()">Copy Code</button>
             </div>
-            <pre><code id="code-snippet">\(escapeHtml(code))</code></pre>
+            \(currentMode == .coding ? "<div class=\"code-container\" id=\"code-snippet\">\(highlightedCode)</div>" : "<pre><code id=\"code-snippet\">\(highlightedCode)</code></pre>")
         </div>
         """
 
@@ -1564,13 +1924,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             <span><span class="hk">Opt+Down/Up</span> Scroll • <span class="hk">Opt+Left/Right</span> Move • <span class="hk">Opt+[/]</span> Resize</span>
         </div>
         <script>
+            window.__rawPythonCode = \(rawCodeJson)[0];
             function copyCode() {
-                const code = document.getElementById('code-snippet');
-                if (code) {
-                    navigator.clipboard.writeText(code.innerText);
-                    const btn = document.querySelector('.copy-btn');
-                    if (btn) { btn.innerText = 'Copied!'; setTimeout(() => { btn.innerText = 'Copy Code'; }, 1500); }
+                if (window.__rawPythonCode) {
+                    navigator.clipboard.writeText(window.__rawPythonCode);
+                } else {
+                    const code = document.getElementById('code-snippet');
+                    if (code) { navigator.clipboard.writeText(code.innerText); }
                 }
+                const btn = document.querySelector('.copy-btn');
+                if (btn) { btn.innerText = 'Copied!'; setTimeout(() => { btn.innerText = 'Copy Code'; }, 1500); }
             }
         </script>
         </body></html>

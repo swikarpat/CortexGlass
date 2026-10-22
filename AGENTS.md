@@ -173,18 +173,35 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
 * **Decision**: Configure `SpatialHUD.swift` to prioritize `gemini-3.8-flash` with "Low" thinking budget (`thinkingBudget: 512`) by default, backed by an automatic failover cascade (`gemini-3-flash-preview` -> `gemini-2.5-flash` -> `gemini-flash-latest`) and configurable `GEMINI_THINKING_BUDGET` / `GEMINI_MODEL` environment variables. Enforce a 6.0s connection deadline and catch HTTP 429/404/503/400 errors for instant zero-stall transition.
 * **Engineering Rationale**: The user requested Gemini 3.8 Flash with Low thinking for enhanced reasoning depth. While Google's public developer API endpoint for `gemini-3.8-flash` currently exhibits rate limits/timeouts on certain tiers, Google's `gemini-3-flash-preview` and `gemini-2.5-flash` endpoints stream at sub-2.5s TTFT with Low thinking (`512` tokens) and sub-1.0s TTFT with thinking disabled (`0` tokens). The failover cascade guarantees the candidate receives state-of-the-art Gemini 3 reasoning whenever responsive, with instantaneous failover to Gemini 2.5 Flash if Google's 3.8 backend rate-limits or stalls.
 
-### ADR-013: "Thought Out Loud" Brevity Framework & Clean Python Implementation
+### ADR-013: "Thought Out Loud" Balanced Verbal Walkthrough & Clean Python Implementation
 * **Status**: Accepted & Implemented
 * **Decision**: Refine verbal speech synthesis in `SpatialHUD.swift` (`buildPrompt`, `renderFinalCards`, and `parseSections`):
   1. **"Thought Out Loud" Title**: Section 1 is titled `🗣️ Thought Out Loud`. The sub-badge `DISCUSS WITH INTERVIEWER` is completely removed for visual cleanliness.
-  2. **Strict Brevity & Anti-Essay Constraint**: Prompt strictly enforces 2 to 3 concise, punchy sentences (maximum 45 words total). Sentence 1 states the optimal approach and core data structure; Sentence 2 notes the complexity or edge case; Sentence 3 provides 1 short collaborative check-in (e.g., *"Does this approach sound good to you before I write the code?"*). All essays, multi-paragraph monologues, and bullet lists are strictly barred so the script can be spoken aloud in under 10 seconds.
-  3. **"Python Implementation" Title**: Code block title updated from `EXACT PYTHON 3 IMPLEMENTATION` to `💻 Python Implementation`.
-  4. **Multi-Turn Amendment Support**: When `solveCount > 0`, "Thought Out Loud" similarly delivers 2 to 3 brief sentences (<45 words) stating the exact patch/adaptation without redundant code rewrites.
+  2. **Balanced 4–5 Sentence Walkthrough**: Prompt enforces a balanced, natural verbal walkthrough (approx. 75–95 words) across 4 points: (1) Problem understanding, optimal algorithm & Big-O target; (2) Core algorithmic mechanism & data structures; (3) Edge case handling (bounds, duplicates, empty inputs); (4) Quick collaborative check-in (e.g., *"Does this approach look solid to you before I jump into implementing?"*). Spoken naturally in ~20 seconds without turning into an essay or bullet wall.
+  3. **"Python Implementation" Title**: Code block title updated from `EXACT PYTHON 3 IMPLEMENTATION` to `💻 Python Implementation` with `solution.py` file badge.
+  4. **Multi-Turn Amendment Support**: When `solveCount > 0`, "Thought Out Loud" similarly delivers 3 to 4 concise sentences (~60–75 words) stating the exact patch/adaptation without redundant code rewrites.
 
 ### ADR-017: Preflight ScreenCaptureKit Access & Zero Dialog Loop
 * **Status**: Accepted & Implemented
 * **Decision**: Guard all ScreenCaptureKit invocations (`startAudioCapture` and `captureScreenText`) with `CGPreflightScreenCaptureAccess()`.
 * **Engineering Rationale**: On macOS Sonoma and Sequoia, calling `SCShareableContent.excludingDesktopWindows` without prior Screen Recording TCC authorization prompts a system modal dialog (`"SpatialHUD" would like to record this computer's screen and audio`). Calling `SCShareableContent` repeatedly on every hotkey press (`Option + S`) or on application launch spammed the system alert dialog. Adding `guard CGPreflightScreenCaptureAccess()` prevents repeated OS modal alerts, returning cleanly until the user grants access once in `System Settings -> Privacy & Security -> Screen & System Audio Recording`. Once granted, `CGPreflightScreenCaptureAccess()` permanently returns `true`.
+
+### ADR-018: IDE-Grade Python Syntax Highlighting & Line-Numbered HUD Code View
+* **Status**: Accepted & Implemented
+* **Decision**: Implement a high-speed, zero-dependency native Swift lexer (`PythonSyntaxHighlighter`) that parses and styles Python code into an IDE-grade container with:
+  1. **Line Numbering**: Sticky line numbers on the left (`<span class="line-num">1</span>`) with subtle muted contrast and `user-select: none`.
+  2. **Full Semantic Tokenization**:
+     - Keywords (`def`, `class`, `return`, `if`, `while`, `in`, `and`, etc.): Vibrant Purple (`#c084fc` dark / `#7c3aed` light).
+     - Function Definitions & Methods: Sky Blue (`#60a5fa` dark / `#0284c7` light).
+     - Class Definitions: Emerald Green (`#34d399` dark / `#059669` light).
+     - Built-in Types & Modules (`int`, `str`, `List`, `len`, `range`): Teal (`#2dd4bf` dark / `#0d9488` light).
+     - Constants & Self (`self`, `cls`, `True`, `False`, `None`): Rose/Coral (`#f43f5e` dark / `#e11d48` light).
+     - Strings & F-Strings (`"..."`, `'...'`, `f"..."`, `"""..."""`): Mint/Lime (`#a3e635` dark / `#15803d` light).
+     - Numbers: Warm Orange (`#fb923c` dark / `#c2410c` light).
+     - Comments (`# ...`): Slate Muted Italic (`#64748b`).
+     - Decorators (`@cache`, `@property`): Amber/Gold (`#facc15` dark / `#b45309` light).
+  3. **Pristine Clipboard Copying**: Injects `window.__rawPythonCode` into the DOM so clicking "Copy Code" copies pure, unadulterated Python code without line numbers or HTML tags.
+* **Engineering Rationale**: Monochrome code buffers in high-pressure technical interviews induce cognitive fatigue. IDE-like syntax highlighting enables candidates to spot function signatures, loop invariants, and data structure manipulations in less than 200ms.
 
 ### ADR-014: Auto-Adaptive System Appearance & Timing Engine (Daylight vs. Night Glassmorphism)
 * **Status**: Accepted & Implemented
