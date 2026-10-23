@@ -82,7 +82,7 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
 | **Option + 1** | Switch to Coding / DSA | Locks mode to **Data Structures & Algorithms** [Strict Default]. Daylight Sky Blue border. |
 | **Option + 2** | Switch to System Design | Locks mode to **System Design (ASCII & Scaled Architecture)**. Daylight Violet border. |
 | **Option + 3** | Switch to Behavioral | Locks mode to **Leadership & Behavioral (STAR Method)**. Daylight Rose border. |
-| **Option + 4** | Switch to Past Project | Locks mode to **Past Project Retrospective & System Architecture**. Daylight Amber border. |
+| **Option + 4** | Switch to AI Concepts & Projects | Locks mode to **AI Concepts & Projects (Multi-Agent, RAG, Theoretical AI & Past Projects)**. Daylight Amber border. |
 | **Option + Z** | Stealth HUD Visibility Toggle | Instantly toggles the headless HUD between fully visible (at current opacity) and 100% alpha-transparent. |
 | **Option + R** | Reset Session & Buffers | Clears problem state, resets solve count to 0, flushes audio/OCR caches, restores HUD to READY state. |
 | **Option + O** | Clean Quit Application | Cleanly stops capture, unlocks `/tmp/com.swikar.spatialhud.lock`, and terminates (`exit(0)`). |
@@ -233,6 +233,15 @@ The system suppresses stray `Option + Key` combinations at the OS level to elimi
   2. **Consolidated HTML Layout Helper (`renderHUD`)**: Abstract common document boilerplate (`<!DOCTYPE html>`, drag handle, header branding, badges, footers, scripts) into a unified `renderHUD(badge:pillHtml:body:footerLeft:footerRight:scripts:)` renderer used across idle, recording, solving, streaming, card presentation, and error states.
   3. **Streamlined Python Syntax Highlighter**: Consolidate quote parsing (`"`, `'`, and prefixed `f|r|b` variants) into a unified token scanner, fix half-open boundary indexing (`..<`) for inline triple quotes, and reuse static `AppDelegate.escapeHtml`.
   4. **Code Footprint Reduction**: Reduced `SpatialHUD.swift` from over 2,354 lines down to ~1,732 lines (>26% reduction, saving 622+ lines) while preserving 100% of the cognitive routing, Whisper ANE, Gemini REST SSE streaming, and zero-focus stealth compositor capabilities.
+
+### ADR-019: Dual-Purpose AI Concepts & Retrospective Routing (Option + 4) & Home Screen Cheat Sheet
+* **Status**: Accepted & Implemented
+* **Decision**: Refactor `Option + 4` (`.projectDeepDive`) from a pure retrospective prompt into a comprehensive **AI Concepts & Projects** routing engine. Upgrade the idle home screen (`renderIdleHUD`) to render an exhaustive operational cheat sheet displaying all 4 interview modes, recording triggers, and navigation hotkeys so candidates never need to memorize key combinations. Implement mode-aware presentation titles and dynamic header parsing across all 4 modes.
+* **Engineering Rationale**: Technical recruiters frequently conduct phone screens asking conceptual, eligibility, and architectural questions about AI, LLM orchestration, and multi-agent coordination (e.g. ReAct loops, supervisor planner-worker patterns, tool calling schemas, RAG semantic chunking, fine-tuning vs. prompt engineering) over the phone or video conference without a live coding IDE or screen share. Routing these to Behavioral mode (`Option + 3`) forced an awkward corporate STAR storytelling format, while Coding mode (`Option + 1`) attempted Python implementations and Big-O calculations. Updating `Option + 4` provides:
+  1. **Direct Verbal Answer (Read Aloud)**: 2–3 crisp, authoritative sentences to say aloud immediately on the call.
+  2. **Core Concepts & Architectural Mechanisms**: 3–4 bullet points explaining under-the-hood mechanisms, trade-offs (e.g. latency vs accuracy, state graph synchronization), and leading tooling (LangGraph, CrewAI, AutoGen, Qdrant, vLLM).
+  3. **Practical Experience & Scale Hook**: 1–2 punchy sentences referencing real-world production metrics and heuristics from `ContextVault.txt`.
+  Furthermore, displaying all hotkeys and modes on the startup HUD screen eliminates cognitive friction during high-pressure screening calls.
 
 ---
 

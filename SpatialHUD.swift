@@ -277,7 +277,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             case .coding: return "Coding / DSA"
             case .systemDesign: return "System Design (ASCII & Scaled Architecture)"
             case .behavioral: return "Leadership & Behavioral (STAR Method)"
-            case .projectDeepDive: return "Past Project Retrospective & System Architecture"
+            case .projectDeepDive: return "AI Concepts & Projects (Multi-Agent, Theory & Retrospectives)"
             }
         }
 
@@ -286,7 +286,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             case .coding: return "CODING / DSA"
             case .systemDesign: return "SYSTEM DESIGN"
             case .behavioral: return "BEHAVIORAL (STAR)"
-            case .projectDeepDive: return "PAST PROJECT"
+            case .projectDeepDive: return "AI CONCEPTS & PROJECTS"
             }
         }
     }
@@ -757,19 +757,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, SCStre
             return """
             \(baseInstructions)
 
-            PAST PROJECT RETROSPECTIVE QUERY: "\(spokenInput)"
+            TECHNICAL / AI / ARCHITECTURAL QUERY: "\(spokenInput)"
             SCREEN CONTEXT:
             \(screenContext)
 
-            OUTPUT IN TECHNICAL BRIEFING FORMAT:
-            ### 1. DIRECT TECHNICAL ANSWER (Read out loud)
-            2 to 3 sentences directly answering, anchoring on ground truth scale and production metrics.
+            CRITICAL INSTRUCTIONS FOR AI, MULTI-AGENT, THEORETICAL & ARCHITECTURE QUESTIONS:
+            - This is a high-level technical phone screening or architectural discussion. The user will speak these answers aloud over the phone or video conference.
+            - Write in natural, authoritative first-person ("I", "in my architecture", "I typically use") as a senior/staff engineer.
+            - If this is a THEORETICAL, CONCEPTUAL, or DEFINITIONAL inquiry (e.g. Multi-Agent systems, ReAct loops, LangGraph/CrewAI, tool calling, RAG, vector similarity, fine-tuning vs prompting, latency/eval trade-offs):
+              Directly explain the concept with high technical depth and conversational clarity.
+            - If this is about a PAST PROJECT or SYSTEM ARCHITECTURE:
+              Directly ground the answer in the candidate's real-world metrics and tech stack from Ground Truth Context.
 
-            ### 2. MONOSPACE ASCII ARCHITECTURE
-            Clean ASCII topology of the subsystem.
+            OUTPUT EXACTLY IN THIS FORMAT:
+            ### 1. DIRECT VERBAL ANSWER (Read Aloud)
+            2 to 3 crisp, authoritative sentences directly answering the question in natural conversational tone for the user to say immediately.
 
-            ### 3. TECHNICAL MECHANISMS, TRADE-OFFS & PRODUCTION INCIDENTS
-            Under-the-hood mechanisms, production incident overcome, and accepted trade-off.
+            ### 2. CORE CONCEPTS & ARCHITECTURAL MECHANISMS
+            3 to 4 concise bullet points explaining:
+            - Core under-the-hood mechanism (e.g. planner-executor loop, tool schema injection, semantic vector chunking).
+            - Key technical trade-offs (e.g. latency vs accuracy, state graph synchronization vs cost, deterministic fallback).
+            - Leading production frameworks/tools (e.g. LangGraph, CrewAI, AutoGen, Qdrant, vLLM).
+
+            ### 3. PRACTICAL EXPERIENCE & SCALE HOOK
+            1 to 2 punchy sentences sharing a practical takeaway, rule of thumb, or real-world metric from production experience to seal credibility.
             """
         }
     }
@@ -1241,30 +1252,69 @@ struct PythonSyntaxHighlighter {
         let themeBadge = isDaylightTheme() ? "☀️ Daylight" : "🌙 Night"
 
         let body = """
-        <div class="card" style="text-align: center; padding: 28px 16px;">
-            <div style="font-size: 28px; margin-bottom: 8px;">🚀</div>
-            <div style="font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 6px;">Direct Gemini REST Engine Online</div>
-            <div style="font-size: 12px; color: var(--text-muted); max-width: 380px; margin: 0 auto 16px;">
-                Sub-2s latency streaming • On-device Whisper ANE • Screen OCR • Zero CoderPad focus theft
+        <div class="card" style="text-align: center; padding: 18px 16px 14px; margin-bottom: 12px;">
+            <div style="font-size: 24px; margin-bottom: 6px;">🚀</div>
+            <div style="font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 4px;">Direct Gemini REST Engine Online</div>
+            <div style="font-size: 11.5px; color: var(--text-muted); max-width: 420px; margin: 0 auto 10px;">
+                Sub-2s streaming • On-device Whisper ANE • Apple Vision OCR • Zero focus theft
             </div>
-            <div style="display: flex; justify-content: center; gap: 8px; font-size: 11px;">
+            <div style="display: flex; justify-content: center; gap: 8px; font-size: 10.5px;">
                 <span class="pill pill-latency">\(modelBadge)</span>
                 <span class="pill pill-latency">\(themeBadge)</span>
+                <span class="pill pill-ready">Active: \(currentMode.tag)</span>
             </div>
         </div>
-        <div class="card">
-            <div class="card-label label-speech"><span>QUICK OPERATIONAL GUIDE</span></div>
-            <ul style="padding-left: 18px; font-size: 12px; color: var(--text); line-height: 1.7;">
-                <li><span class="hk">Opt + S</span> : Start session recording (interviewer speech + screen)</li>
-                <li><span class="hk">Opt + Return</span> : Stop & solve instantly (streams answer in ~1.5s)</li>
-                <li><span class="hk">Opt + -</span> : Make HUD more transparent (read behind HUD)</li>
-                <li><span class="hk">Opt + =</span> : Make HUD more solid / opaque</li>
-                <li><span class="hk">Opt + 1..4</span> : Switch mode (Coding, SysDesign, Behavioral, Project)</li>
-                <li><span class="hk">Opt + Z</span> : Stealth Hide / Show • <span class="hk">Opt + R</span> : Reset • <span class="hk">Opt + O</span> : Quit</li>
-                <li><span class="hk">Mouse Drag</span> : Click & drag top header to move anywhere</li>
-                <li><span class="hk">Mouse Resize</span> : Drag any edge or corner to resize</li>
-                <li><span class="hk">Trackpad Scroll</span> : Two-finger scroll content</li>
-            </ul>
+
+        <div class="card" style="margin-bottom: 12px; padding: 14px 16px;">
+            <div class="card-label label-speech"><span>INTERVIEW MODES (PRESS TO SWITCH)</span></div>
+            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12px;">
+                <div style="display: flex; align-items: baseline; gap: 8px;">
+                    <span class="hk" style="min-width: 66px; text-align: center;">Opt + 1</span>
+                    <div><strong style="color: var(--accent);">Coding / DSA</strong> <span style="color: var(--text-muted);">(Default)</span> — Thought Out Loud + Python 3 + Complexity</div>
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 8px;">
+                    <span class="hk" style="min-width: 66px; text-align: center;">Opt + 2</span>
+                    <div><strong style="color: var(--accent);">System Design</strong> — Scope & Capacity + Monospace ASCII + Trade-offs</div>
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 8px;">
+                    <span class="hk" style="min-width: 66px; text-align: center;">Opt + 3</span>
+                    <div><strong style="color: var(--accent);">Behavioral / Leadership</strong> — STAR Format (Situation, Actions, Quantified Results)</div>
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 8px;">
+                    <span class="hk" style="min-width: 66px; text-align: center;">Opt + 4</span>
+                    <div><strong style="color: var(--accent);">AI Concepts & Projects</strong> — Multi-Agent, RAG, Theoretical AI & Past Projects</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 12px; padding: 14px 16px;">
+            <div class="card-label label-code"><span>RECORDING & SOLVING</span></div>
+            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+                <div style="display: flex; align-items: baseline; gap: 8px;">
+                    <span class="hk" style="min-width: 90px; text-align: center;">Opt + S</span>
+                    <div><strong>Start Session Recording:</strong> Listens to interviewer voice + caches screen</div>
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 8px;">
+                    <span class="hk" style="min-width: 90px; text-align: center;">Opt + Return</span>
+                    <div><strong>Stop & Solve:</strong> Parallel Whisper + Vision + Gemini REST streams answer</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="padding: 14px 16px;">
+            <div class="card-label label-complexity"><span>HUD SHORTCUTS & NAVIGATION</span></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; font-size: 11.5px; color: var(--text);">
+                <div><span class="hk">Opt + -</span> / <span class="hk">=</span> : Opacity (20%-100%)</div>
+                <div><span class="hk">Opt + [</span> / <span class="hk">]</span> : Scale (0.90x / 1.10x)</div>
+                <div><span class="hk">Opt + &darr;</span> / <span class="hk">&uarr;</span> : Scroll Down / Up</div>
+                <div><span class="hk">Opt + &larr;</span> / <span class="hk">&rarr;</span> : Nudge Left / Right</div>
+                <div><span class="hk">Opt + 5</span> / <span class="hk">6</span> : Snap Left / Right Edge</div>
+                <div><span class="hk">Opt + 7</span> / <span class="hk">8</span> : Snap Top-Left / Top-Right</div>
+                <div><span class="hk">Opt + Z</span> : Stealth Toggle</div>
+                <div><span class="hk">Opt + R</span> : Reset Session Buffer</div>
+                <div><span class="hk">Opt + O</span> : Clean Quit App</div>
+                <div><span class="hk">Mouse Drag</span> : Drag header to move</div>
+            </div>
         </div>
         """
         renderHUD(
@@ -1272,7 +1322,7 @@ struct PythonSyntaxHighlighter {
             pillHtml: "<div class=\"pill pill-ready\">● READY</div>",
             body: body,
             footerLeft: "SpatialHUD Compositor (sharingType: none)",
-            footerRight: "<span class=\"hk\">Opt + O</span> Quit"
+            footerRight: "<span class=\"hk\">Opt + 1..4</span> Modes • <span class=\"hk\">Opt + S</span> Record • <span class=\"hk\">Opt + O</span> Quit"
         )
     }
 
@@ -1362,9 +1412,32 @@ struct PythonSyntaxHighlighter {
         let (speech, code, complexity) = parseSections(raw: rawText)
         let roundLabel = solveCount > 1 ? "Follow-Up #\(solveCount - 1)" : "Initial Problem"
 
+        let card1Title: String
+        let card2Title: String
+        let card3Title: String
+
+        switch currentMode {
+        case .coding:
+            card1Title = "🗣️ Thought Out Loud"
+            card2Title = "💻 Python Implementation"
+            card3Title = "⏱️ TIME & SPACE COMPLEXITY"
+        case .systemDesign:
+            card1Title = "📐 Scope & Capacity Estimates"
+            card2Title = "🏗️ Monospace ASCII Architecture"
+            card3Title = "⚖️ Subsystems & Trade-offs"
+        case .behavioral:
+            card1Title = "🎯 Situation & Task (20s Script)"
+            card2Title = "⚡ Leadership Actions Taken (40s Script)"
+            card3Title = "📈 Quantified Business Results (15s Script)"
+        case .projectDeepDive:
+            card1Title = "🗣️ Direct Verbal Answer (Read Aloud)"
+            card2Title = "🧠 Core Concepts & Architectural Mechanisms"
+            card3Title = "📊 Practical Experience & Scale Hook"
+        }
+
         let speechHtml = speech.isEmpty ? "" : """
         <div class="speech-card">
-            <div class="card-label label-speech"><span>🗣️ Thought Out Loud</span></div>
+            <div class="card-label label-speech"><span>\(card1Title)</span></div>
             <div class="speech-text">\(formatSpeechParagraphHTML(speech))</div>
         </div>
         """
@@ -1373,25 +1446,72 @@ struct PythonSyntaxHighlighter {
         let rawCodeJson = (try? JSONSerialization.data(withJSONObject: [code])).flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
         let codeSubBadge = currentMode == .coding ? "solution.py" : (currentMode == .systemDesign ? "architecture.txt" : "snippet.txt")
 
-        let codeHtml = code.isEmpty ? "" : """
-        <div class="card">
-            <div class="card-label label-code">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span>💻 Python Implementation</span>
-                    <span style="font-size: 9.5px; opacity: 0.65; font-weight: 500; font-family: 'SF Mono', monospace;">\(codeSubBadge)</span>
+        let codeHtml: String
+        if code.isEmpty {
+            codeHtml = ""
+        } else if currentMode == .coding {
+            codeHtml = """
+            <div class="card">
+                <div class="card-label label-code">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>\(card2Title)</span>
+                        <span style="font-size: 9.5px; opacity: 0.65; font-weight: 500; font-family: 'SF Mono', monospace;">\(codeSubBadge)</span>
+                    </div>
+                    <button class="copy-btn" onclick="copyCode()">Copy Code</button>
                 </div>
-                <button class="copy-btn" onclick="copyCode()">Copy Code</button>
+                <div class="code-container" id="code-snippet">\(highlightedCode)</div>
             </div>
-            \(currentMode == .coding ? "<div class=\"code-container\" id=\"code-snippet\">\(highlightedCode)</div>" : "<pre><code id=\"code-snippet\">\(highlightedCode)</code></pre>")
-        </div>
-        """
+            """
+        } else if currentMode == .systemDesign {
+            codeHtml = """
+            <div class="card">
+                <div class="card-label label-code">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>\(card2Title)</span>
+                        <span style="font-size: 9.5px; opacity: 0.65; font-weight: 500; font-family: 'SF Mono', monospace;">\(codeSubBadge)</span>
+                    </div>
+                    <button class="copy-btn" onclick="copyCode()">Copy Architecture</button>
+                </div>
+                <pre><code id="code-snippet">\(escapeHtml(code))</code></pre>
+            </div>
+            """
+        } else {
+            // For .projectDeepDive and .behavioral
+            if code.contains("```") {
+                codeHtml = """
+                <div class="card">
+                    <div class="card-label label-code"><span>\(card2Title)</span></div>
+                    <pre><code id="code-snippet">\(escapeHtml(code))</code></pre>
+                </div>
+                """
+            } else {
+                codeHtml = """
+                <div class="card">
+                    <div class="card-label label-code"><span>\(card2Title)</span></div>
+                    <div class="speech-text">\(formatSpeechParagraphHTML(code))</div>
+                </div>
+                """
+            }
+        }
 
-        let complexityHtml = complexity.isEmpty ? "" : """
-        <div class="card" style="padding: 10px 14px; background: var(--green-bg); border-color: var(--green-border);">
-            <div class="card-label label-complexity" style="margin-bottom: 4px;"><span>⏱️ TIME & SPACE COMPLEXITY</span></div>
-            <div style="font-size: 12.5px; color: var(--text);">\(escapeHtml(complexity))</div>
-        </div>
-        """
+        let complexityHtml: String
+        if complexity.isEmpty {
+            complexityHtml = ""
+        } else if currentMode == .coding {
+            complexityHtml = """
+            <div class="card" style="padding: 10px 14px; background: var(--green-bg); border-color: var(--green-border);">
+                <div class="card-label label-complexity" style="margin-bottom: 4px;"><span>\(card3Title)</span></div>
+                <div style="font-size: 12.5px; color: var(--text);">\(escapeHtml(complexity))</div>
+            </div>
+            """
+        } else {
+            complexityHtml = """
+            <div class="card" style="padding: 12px 14px; background: var(--green-bg); border-color: var(--green-border);">
+                <div class="card-label label-complexity" style="margin-bottom: 4px;"><span>\(card3Title)</span></div>
+                <div class="speech-text">\(formatSpeechParagraphHTML(complexity))</div>
+            </div>
+            """
+        }
 
         let scripts = """
         <script>
@@ -1439,28 +1559,24 @@ struct PythonSyntaxHighlighter {
         var code = ""
         var complexity = ""
 
+        func stripHeaderLine(_ str: String) -> String {
+            let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let idx = trimmed.firstIndex(of: "\n") {
+                return String(trimmed[idx...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return trimmed
+        }
+
         if raw.contains("### 1.") && raw.contains("### 2.") {
             let p1 = raw.components(separatedBy: "### 1.")
             if p1.count > 1 {
                 let p2 = p1[1].components(separatedBy: "### 2.")
-                speech = p2[0].replacingOccurrences(of: "THOUGHT OUT LOUD", with: "")
-                              .replacingOccurrences(of: "Thought Out Loud", with: "")
-                              .replacingOccurrences(of: "WHAT TO SAY ALOUD RIGHT NOW", with: "")
-                              .replacingOccurrences(of: "WHAT TO SAY ALOUD", with: "")
-                              .trimmingCharacters(in: .whitespacesAndNewlines)
+                speech = stripHeaderLine(p2[0])
                 if p2.count > 1 {
                     let p3 = p2[1].components(separatedBy: "### 3.")
-                    code = p3[0].replacingOccurrences(of: "PYTHON IMPLEMENTATION", with: "")
-                                .replacingOccurrences(of: "Python Implementation", with: "")
-                                .replacingOccurrences(of: "Python Implementtation", with: "")
-                                .replacingOccurrences(of: "EXACT PYTHON 3 IMPLEMENTATION", with: "")
-                                .replacingOccurrences(of: "PYTHON 3 IMPLEMENTATION", with: "")
-                                .replacingOccurrences(of: "PYTHON 3 CODE", with: "")
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                    code = stripHeaderLine(p3[0])
                     if p3.count > 1 {
-                        complexity = p3[1].replacingOccurrences(of: "TIME & SPACE COMPLEXITY", with: "")
-                                          .replacingOccurrences(of: "COMPLEXITY", with: "")
-                                          .trimmingCharacters(in: .whitespacesAndNewlines)
+                        complexity = stripHeaderLine(p3[1])
                     }
                 }
             }
